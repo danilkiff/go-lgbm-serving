@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      # uv приносит Python 3.12 и LightGBM 4.6.0, чей wheel содержит нативную
+      # lib_lightgbm.so, с которой линкуется cgo (см. README, "Архитектура").
+      # libgomp на раннере Ubuntu уже есть.
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Python deps (LightGBM + native lib)
+        run: cd python && uv sync --no-default-groups
+
+      - name: Generate reference artifacts
+        run: make data
+
+      - name: Vet
+        run: make vet
+
+      - name: Test (parity + concurrency)
+        run: make test
+
+      - name: Race detector
+        run: make race
+
+      - name: Benchmarks (smoke)
+        run: make bench-smoke
