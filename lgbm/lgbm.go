@@ -1,0 +1,168 @@
+// Пакет lgbm - тонкая cgo-обёртка над C API LightGBM для инференса модели,
+// обученной в Python. Отдаёт сырую маржу (raw margin) и нативные вклады SHAP
+// (C_API_PREDICT_CONTRIB). В этом и смысл: коды причин берутся из того же
+// нативного предиктора, а не из повторной реализации.
+//
+// Прототипы C-ABI объявлены вручную, без #include <LightGBM/c_api.h>: этот
+// заголовок тянет C++/Arrow, которые преамбула cgo не компилирует. C API -
+// стабильная поверхность extern "C"; прототипы ниже отвечают LightGBM 4.x.
+// Версию либы фиксируем соответственно (см. python/pyproject.toml).
+//
+// Потокобезопасность: предсказание на одном хэндле Booster сериализуется внутри
+// C API (LightGBM #3751/#3771). Не делите один Booster между горутинами ради
+// пропускной способности - используйте Pool.
+package lgbm
+
+/*
+#include <stdint.h>
+#include <stdlib.h>
+
+typedef void* BoosterHandle;
+
+extern const char* LGBM_GetLastError(void);
+extern int LGBM_BoosterCreateFromModelfile(const char* filename, int* out_num_iterations, BoosterHandle* out);
+extern int LGBM_BoosterFree(BoosterHandle handle);
+extern int LGBM_BoosterGetNumFeature(BoosterHandle handle, int* out_len);
+extern int LGBM_BoosterCalcNumPredict(BoosterHandle handle, int num_row, int predict_type, int start_iteration, int num_iteration, int64_t* out_len);
+extern int LGBM_BoosterPredictForMat(BoosterHandle handle, const void* data, int data_type, int32_t nrow, int32_t ncol, int is_row_major, int predict_type, int start_iteration, int num_iteration, const char* parameter, int64_t* out_len, double* out_result);
+
+// Флаги линковки заданы здесь (в #cgo), а не в переменной CGO_LDFLAGS: go
+// применяет CGO_LDFLAGS дважды (в cgo-объект и повторно на внешней линковке), и
+// каждый -rpath дублируется - линковщик это предупреждает. Директива #cgo
+// применяется один раз. ${SRCDIR} - каталог этого пакета, поэтому путь к
+// lib_lightgbm из uv-venv (Python зафиксирован на 3.12 через .python-version)
+// стабилен, и голый `go build ./...` собирается без настройки окружения.
+#cgo LDFLAGS: -L${SRCDIR}/../python/.venv/lib/python3.12/site-packages/lightgbm/lib -Wl,-rpath,${SRCDIR}/../python/.venv/lib/python3.12/site-packages/lightgbm/lib -l_lightgbm
+#cgo darwin LDFLAGS: -Wl,-rpath,/opt/homebrew/opt/libomp/lib
+*/
+import "C"
+
+import (
+	"fmt"
+	"runtime"
+	"unsafe"
+)
+
+// Константы C API (из c_api.h; стабильны в пределах 4.x).
+const (
+	cDtypeFloat64   = 1
+	cPredictRaw     = 1 // C_API_PREDICT_RAW_SCORE - маржа до сигмоиды
+	cPredictContrib = 3 // C_API_PREDICT_CONTRIB - значения SHAP
+)
+
+// cPredictParam фиксирует число нативных потоков в 1 на время предсказания.
+// Порядок редукции float в многопоточном OpenMP - задокументированный источник
+// недетерминизма между запусками (см. README, "Численный паритет"); параллелизм
+// держим на уровне Go через Pool. Аллоцируется один раз на весь процесс, чтобы
+// горячий путь не делал аллокаций.
+var cPredictParam = C.CString("num_threads=1")
+
+// Booster - загруженная модель LightGBM.
+//
+// Небезопасен для конкурентных вызовов Predict* на одном значении. Для
+// параллельной подачи используйте Pool.
+type Booster struct {
+	handle     C.BoosterHandle
+	nFeature   int
+	rawLen     int // длина вывода raw-предсказания (1 для бинарной задачи)
+	contribLen int // длина вывода SHAP (nFeature+1 на класс)
+}
+
+func lastErr() error {
+	return fmt.Errorf("lightgbm: %s", C.GoString(C.LGBM_GetLastError()))
+}
+
+func calcNumPredict(h C.BoosterHandle, predictType int) (int, error) {
+	var n C.int64_t
+	if C.LGBM_BoosterCalcNumPredict(h, 1, C.int(predictType), 0, -1, &n) != 0 {
+		return 0, lastErr()
+	}
+	return int(n), nil
+}
+
+// LoadBooster загружает модель, ранее записанную Python-методом Booster.save_model.
+func LoadBooster(path string) (*Booster, error) {
+	cpath := C.CString(path)
+	defer C.free(unsafe.Pointer(cpath))
+
+	var nIter C.int
+	var h C.BoosterHandle
+	if C.LGBM_BoosterCreateFromModelfile(cpath, &nIter, &h) != 0 {
+		return nil, lastErr()
+	}
+	var nf C.int
+	if C.LGBM_BoosterGetNumFeature(h, &nf) != 0 {
+		C.LGBM_BoosterFree(h)
+		return nil, lastErr()
+	}
+	b := &Booster{handle: h, nFeature: int(nf)}
+	var err error
+	if b.rawLen, err = calcNumPredict(h, cPredictRaw); err != nil {
+		C.LGBM_BoosterFree(h)
+		return nil, err
+	}
+	if b.contribLen, err = calcNumPredict(h, cPredictContrib); err != nil {
+		C.LGBM_BoosterFree(h)
+		return nil, err
+	}
+	return b, nil
+}
+
+// NumFeature возвращает число входных признаков модели.
+func (b *Booster) NumFeature() int { return b.nFeature }
+
+// Close освобождает нативную модель. Повторный вызов безопасен.
+func (b *Booster) Close() {
+	if b.handle != nil {
+		C.LGBM_BoosterFree(b.handle)
+		b.handle = nil
+	}
+}
+
+// predictInto прогоняет одну строку через PredictForMat для заданного типа
+// предсказания, используя заранее вычисленную длину вывода (горячий путь - один
+// вызов cgo).
+func (b *Booster) predictInto(row []float64, predictType, outLen int) ([]float64, error) {
+	if len(row) != b.nFeature {
+		return nil, fmt.Errorf("lgbm: expected %d features, got %d", b.nFeature, len(row))
+	}
+	out := make([]float64, outLen)
+	var written C.int64_t
+	ret := C.LGBM_BoosterPredictForMat(
+		b.handle,
+		unsafe.Pointer(&row[0]),
+		C.int(cDtypeFloat64),
+		C.int32_t(1),
+		C.int32_t(b.nFeature),
+		C.int(1), // is_row_major
+		C.int(predictType),
+		C.int(0),  // start_iteration
+		C.int(-1), // num_iteration: все
+		cPredictParam,
+		&written,
+		(*C.double)(unsafe.Pointer(&out[0])),
+	)
+	runtime.KeepAlive(row)
+	runtime.KeepAlive(out)
+	if ret != 0 {
+		return nil, lastErr()
+	}
+	return out[:int(written)], nil
+}
+
+// PredictRaw возвращает сырую маржу (до сигмоиды) для одной строки - прямой
+// аналог Python predict(raw_score=True).
+func (b *Booster) PredictRaw(row []float64) (float64, error) {
+	out, err := b.predictInto(row, cPredictRaw, b.rawLen)
+	if err != nil {
+		return 0, err
+	}
+	return out[0], nil
+}
+
+// PredictContrib возвращает нативные вклады SHAP для одной строки, длина
+// NumFeature()+1. Последний элемент - базовое (ожидаемое) значение; сумма всех
+// элементов равна сырой марже (инвариант согласованности, который мы проверяем).
+func (b *Booster) PredictContrib(row []float64) ([]float64, error) {
+	return b.predictInto(row, cPredictContrib, b.contribLen)
+}
