@@ -1,0 +1,16 @@
+[project]
+name = "lgbm-poc-train"
+version = "0.1.0"
+description = "Обучение модели LightGBM и выгрузка артефактов для PoC паритета и подачи на Go"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "lightgbm>=4.0,<5",
+    "numpy>=1.26",
+    "scikit-learn>=1.4",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.6"]
+
+[tool.ruff]
+line-length = 100
