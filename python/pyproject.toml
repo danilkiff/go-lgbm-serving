@@ -13,6 +13,8 @@ dependencies = [
 
 [dependency-groups]
 dev = ["ruff>=0.6"]
+# Группа для валидационного ноутбука (notebooks/); в подачу не входит.
+analysis = ["matplotlib>=3.8", "jupytext>=1.16", "nbconvert>=7.16", "ipykernel>=6.29"]
 
 [tool.ruff]
 line-length = 100

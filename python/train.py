@@ -215,8 +215,9 @@ def load_rba(path: str, target: str):
     names = [f[0] for f in RBA_FEATURES]
     X = feat[names].to_numpy(dtype="float32")
     y = d["y"].to_numpy().astype("int32")
+    ts = d["ts"].to_numpy()  # datetime64, выровнен с X - для временного сплита и дрейфа
     reason_codes = {f[0]: {"code": f[1], "label": f[2]} for f in RBA_FEATURES}
-    return X, y, names, reason_codes
+    return X, y, ts, names, reason_codes
 
 
 def main() -> None:
@@ -242,7 +243,7 @@ def main() -> None:
     if args.dataset == "rba":
         if not args.input:
             raise SystemExit("--dataset rba requires --input <path to rba-dataset.csv>")
-        X, y, names, reason_codes = load_rba(args.input, args.target)
+        X, y, _ts, names, reason_codes = load_rba(args.input, args.target)
     elif args.dataset == "csv":
         if not args.input:
             raise SystemExit("--dataset csv requires --input <path>")
