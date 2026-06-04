@@ -7,14 +7,14 @@
 
 PLATFORM := $(shell go env GOOS)-$(shell go env GOARCH)
 
-.PHONY: data data-creditcard test race bench bench-smoke run vet tidy clean print-env xparity-dump
+.PHONY: data data-rba test race bench bench-smoke run vet tidy clean print-env xparity-dump
 
-data: ## пересобрать эталонные артефакты из python/train.py (синтетика)
-	cd python && uv run python train.py
+data: ## пересобрать эталонные артефакты на синтетике (для CI, без скачивания)
+	cd python && uv run python train.py --dataset synthetic
 
-data-creditcard: ## скачать датасет ULB creditcard и обучиться на нём (нужен kaggle CLI)
-	./python/fetch_creditcard.sh
-	cd python && uv run python train.py --dataset csv --input ../testdata/creditcard.csv --target Class
+data-rba: ## скачать датасет RBA и обучить модель сессионного фрода (нужен kaggle CLI)
+	./python/fetch_rba.sh
+	cd python && uv run python train.py --dataset rba --input ../testdata/rba-dataset.csv --target attack --holdout 50000 --threads 8
 
 test: ## прогнать паритет и юнит-тесты
 	go test -v ./...
