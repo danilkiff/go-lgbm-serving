@@ -1,0 +1,3 @@
+# Excluding fat Jupyter notebook from Github language bar
+# see https://github.com/github-linguist/linguist
+**/*.ipynb linguist-vendored
