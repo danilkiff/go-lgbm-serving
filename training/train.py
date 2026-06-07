@@ -10,16 +10,15 @@ model.txt через C API LightGBM (cgo) и обязана воспроизве
 суммируются в ту же сырую маржу, что даёт стороне Go вторую, внутреннюю проверку
 согласованности.
 
-Источники данных (--dataset):
-  rba        домен сессионного фрода: датасет RBA (risk-based authentication,
-             Wiefling et al.), цель Is Attack IP. Признаки строятся из сырых
-             колонок: RTT, время суток, новизна страны/города/ASN/ОС/браузера/
-             устройства для пользователя - сигнал, на котором работает RBA. Всё
-             кодируется в числа, поэтому harness паритета и Go-подача (float64)
-             не меняются.
-  synthetic  несбалансированные табличные данные (sklearn) без скачиваний - для
-             CI и быстрой проверки пути подачи.
-  csv        любой полностью числовой CSV с колонкой-целью.
+Режимы:
+  --dataset rba|csv  обучить модель и выгрузить эталоны. rba: датасет RBA
+                     (Wiefling et al.), цель Is Attack IP; признаки из сырых
+                     колонок (RTT, время суток, новизна страны/города/ASN/ОС/
+                     браузера/устройства), всё в числах. csv: числовой CSV с
+                     колонкой-целью.
+  --from-model PATH  без обучения: выгрузить эталоны паритета из готового
+                     model.txt на случайном холдауте. Так CI проверяет паритет на
+                     закоммиченной RBA-фикстуре, не качая 9 ГБ датасета.
 
 Обучение идёт с deterministic=True, force_row_wise=True и фиксированным
 num_threads - воспроизводимо при одном и том же числе потоков (см. README,
@@ -42,25 +41,6 @@ import json
 import pathlib
 
 import numpy as np
-
-
-def make_synthetic(n: int, n_features: int, seed: int):
-    """Несбалансированные табличные бинарные данные: форма как у фрода, без лицензий и скачиваний."""
-    from sklearn.datasets import make_classification
-
-    n_informative = max(2, n_features // 2)
-    X, y = make_classification(
-        n_samples=n,
-        n_features=n_features,
-        n_informative=n_informative,
-        n_redundant=max(0, n_features // 5),
-        weights=[0.98, 0.02],  # ~2% положительных - дисбаланс классов как у фрода
-        class_sep=0.8,
-        flip_y=0.01,
-        random_state=seed,
-    )
-    names = [f"f{i}" for i in range(n_features)]
-    return X.astype(np.float64), y.astype(np.int32), names
 
 
 def load_csv(path: str, target: str):
@@ -220,20 +200,91 @@ def load_rba(path: str, target: str):
     return X, y, ts, names, reason_codes
 
 
+def _sample_holdout(rng, n: int, names):
+    """Случайные строки в форме признаков модели - правдоподобные диапазоны на имя
+    признака RBA, для незнакомого - стандартная нормаль. Для паритета (Go == Python)
+    важна только форма входа, не реализм значений."""
+    binary = {"login_successful", "is_new_country", "is_new_city", "is_new_asn",
+              "is_new_os", "is_new_browser", "is_new_device"}
+    cols = []
+    for nm in names:
+        if nm in binary:
+            c = rng.integers(0, 2, n)
+        elif nm == "hour":
+            c = rng.integers(0, 24, n)
+        elif nm == "dow":
+            c = rng.integers(0, 7, n)
+        elif nm == "n_prior_logins":
+            c = rng.integers(0, 500, n)
+        elif nm == "secs_since_last":
+            c = rng.exponential(3600.0, n)
+            c[rng.random(n) < 0.1] = -1.0  # первый вход пользователя
+        elif nm == "rtt_ms":
+            c = rng.gamma(2.0, 50.0, n)
+        else:
+            c = rng.standard_normal(n)
+        cols.append(np.asarray(c, dtype="float64"))
+    return np.column_stack(cols)
+
+
+def dump_from_model(model_path: str, outdir: str, n_rows: int, seed: int) -> None:
+    """Выгружает эталоны паритета из готовой модели, без обучения. Холдаут -
+    случайные строки в форме признаков модели; эталоны считаются на той же сборке
+    liblightgbm, что грузит Go-тест, поэтому паритет битоточный, а датасет RBA для
+    этой проверки не нужен."""
+    import shutil
+
+    import lightgbm as lgb
+
+    booster = lgb.Booster(model_file=model_path)
+    names = booster.feature_name()
+    X = _sample_holdout(np.random.default_rng(seed), n_rows, names)
+    raw = booster.predict(X, raw_score=True)
+    contrib = booster.predict(X, pred_contrib=True)
+
+    out = pathlib.Path(outdir)
+    out.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(model_path, out / "model.txt")  # тот же байт-в-байт файл, что грузит Go
+    # %.17g: полный round-trip float64, чтобы Go читал те же входы -> паритет битоточный.
+    np.savetxt(out / "holdout.csv", X, delimiter=",", header=",".join(names), comments="", fmt="%.17g")
+    np.savetxt(out / "ref_raw.csv", raw, delimiter=",", header="raw_margin", comments="", fmt="%.17g")
+    np.savetxt(out / "ref_contrib.csv", contrib, delimiter=",",
+               header=",".join([*names, "base_value"]), comments="", fmt="%.17g")
+    meta = {
+        "lightgbm_version": lgb.__version__,
+        "source": f"from-model:{model_path}",
+        "seed": seed,
+        "n_features": len(names),
+        "feature_names": names,
+        "n_holdout": int(n_rows),
+        "score_is_raw_margin": True,
+        "contrib_shape": list(contrib.shape),
+    }
+    (out / "meta.json").write_text(json.dumps(meta, indent=2))
+    print(f"lightgbm {lgb.__version__} | from-model {model_path} | {len(names)} features, {n_rows} holdout rows")
+    print(f"wrote {out}/ : model.txt, holdout.csv, ref_raw.csv, ref_contrib.csv {contrib.shape}, meta.json")
+    print(f"raw margin range [{raw.min():.4f}, {raw.max():.4f}]")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--dataset", choices=["rba", "synthetic", "csv"], default="rba")
+    ap.add_argument("--from-model",
+                    help="выгрузить эталоны паритета из готового model.txt, без обучения")
+    ap.add_argument("--dataset", choices=["rba", "csv"], default="rba")
     ap.add_argument("--input", help="CSV path for --dataset rba|csv")
     ap.add_argument("--target", default="attack",
                     help="rba: 'attack' (Is Attack IP) or 'ato'; csv: target column name")
-    ap.add_argument("--n", type=int, default=20000, help="synthetic sample count")
-    ap.add_argument("--features", type=int, default=30, help="synthetic feature count")
-    ap.add_argument("--holdout", type=int, default=4000, help="rows held out for the parity check")
+    ap.add_argument("--holdout", type=int, default=4000,
+                    help="rows held out for the parity check (или сгенерированных при --from-model)")
     ap.add_argument("--seed", type=int, default=708)
     ap.add_argument("--threads", type=int, default=1, help="LightGBM num_threads (fixed for reproducibility)")
     ap.add_argument("--outdir", required=True,
                     help="output dir for reference artifacts (e.g. testdata, relative to CWD)")
     args = ap.parse_args()
+
+    if args.from_model:
+        dump_from_model(args.from_model, args.outdir, args.holdout, args.seed)
+        return
 
     import lightgbm as lgb
 
@@ -242,12 +293,10 @@ def main() -> None:
         if not args.input:
             raise SystemExit("--dataset rba requires --input <path to rba-dataset.csv>")
         X, y, _ts, names, reason_codes = load_rba(args.input, args.target)
-    elif args.dataset == "csv":
+    else:  # csv
         if not args.input:
             raise SystemExit("--dataset csv requires --input <path>")
         X, y, names = load_csv(args.input, args.target)
-    else:
-        X, y, names = make_synthetic(args.n, args.features, args.seed)
     if reason_codes is None:
         reason_codes = {n: {"code": f"R{i}", "label": n} for i, n in enumerate(names)}
 
@@ -315,7 +364,7 @@ def main() -> None:
     meta = {
         "lightgbm_version": lgb.__version__,
         "dataset": args.dataset,
-        "target": args.target if args.dataset != "synthetic" else "synthetic",
+        "target": args.target,
         "seed": args.seed,
         "n_features": len(names),
         "feature_names": names,

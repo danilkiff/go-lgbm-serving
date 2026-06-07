@@ -1,9 +1,7 @@
-# Цели подачи: сборка, тесты и бенчи Go-модуля. Выполняются из serving/ (CWD =
-# serving/). Из корня репозитория: `make -C serving <цель>`. Тесты читают эталоны
-# из ../training/testdata - сначала `make -C training data`. cgo линкует
-# lib_lightgbm из training/.venv (директива #cgo в lgbm/lgbm.go), флаги линковки
-# тут НЕ задаются: голый `go build ./...` работает сам (CGO_LDFLAGS применялся бы
-# дважды и дублировал -rpath).
+# ВНИМАНИЕ: 
+# cgo линкует lib_lightgbm из training/.venv (директива #cgo в lgbm/lgbm.go), 
+# флаги линковки здесь НЕ задаются: голый `go build ./...` работает сам 
+# (CGO_LDFLAGS применялся бы дважды и дублировал бы `-rpath`).
 
 PLATFORM := $(shell go env GOOS)-$(shell go env GOARCH)
 
@@ -14,9 +12,12 @@ help: ## показать цели этого Makefile
 	@grep -hE '^[a-zA-Z][a-zA-Z_-]*:.*## ' $(MAKEFILE_LIST) | \
 		awk 'BEGIN{FS=":.*## "}{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
-# -p 1: пакеты не параллельно, иначе нативный SHAP в lgbm душит CPU и тайминг
-# TestHotPathIsolation в pipeline флейкает.
+# (1) go test кэширует по бинарю, а testdata читается в рантайме: сбрасываем кэш,
+#     чтобы паритет шёл по только что обученным эталонам.
+# (2) -p 1: пакеты не параллельно, иначе нативный SHAP в lgbm душит CPU и тайминг
+#     TestHotPathIsolation в pipeline работает неустойчиво.
 test: ## паритет и юнит-тесты
+	go clean -testcache
 	go test -v -p 1 ./...
 
 race: ## паритет и тесты конкуренции под детектором гонок
