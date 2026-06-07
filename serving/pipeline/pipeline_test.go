@@ -1,7 +1,6 @@
 package pipeline
 
 import (
-	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -11,15 +10,15 @@ import (
 
 func tdPool(t *testing.T) *lgbm.Pool { return tdPoolN(t, runtime.GOMAXPROCS(0)) }
 
+// tdPoolN строит пул на закоммиченной фикстуре (serving/fixtures/model.txt). Тесты
+// конвейера проверяют механику (решение, очередь, воркеры), а не паритет, поэтому им
+// годится любая рабочая модель - фикстура избавляет их от шага `make -C training data`.
 func tdPoolN(t *testing.T, n int) *lgbm.Pool {
 	t.Helper()
-	model := filepath.Join("..", "..", "testdata", "model.txt")
-	if _, err := os.Stat(model); err != nil {
-		t.Skip("no testdata - run `make data` first")
-	}
+	model := filepath.Join("..", "fixtures", "model.txt")
 	p, err := lgbm.NewPool(model, n)
 	if err != nil {
-		t.Fatalf("pool: %v", err)
+		t.Fatalf("load fixture %s: %v", model, err)
 	}
 	return p
 }

@@ -31,12 +31,12 @@ type meta struct {
 	ScoreIsRawMargin bool     `json:"score_is_raw_margin"`
 }
 
-func tdPath(name string) string { return filepath.Join("..", "..", "testdata", name) }
+func tdPath(name string) string { return filepath.Join("..", "..", "training", "testdata", name) }
 
 func requireData(t *testing.T) {
 	t.Helper()
 	if _, err := os.Stat(tdPath("model.txt")); err != nil {
-		t.Skip("no testdata - run `make data` (training/train.py) first")
+		t.Skip("no testdata - run `make -C training data` first")
 	}
 }
 

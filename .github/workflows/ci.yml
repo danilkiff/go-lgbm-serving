@@ -28,16 +28,16 @@ jobs:
         run: cd training && uv sync --no-default-groups
 
       - name: Generate reference artifacts
-        run: make data
+        run: make -C training data
 
       - name: Vet
-        run: make vet
+        run: make -C serving vet
 
       - name: Test (parity + concurrency)
-        run: make test
+        run: make -C serving test
 
       - name: Race detector
-        run: make race
+        run: make -C serving race
 
       - name: Benchmarks (smoke)
-        run: make bench-smoke
+        run: make -C serving bench-smoke

@@ -20,22 +20,19 @@ CatBoost/ONNX) - в [docs/DESIGN.md](docs/DESIGN.md); этот README - свод
 ## Структура репозитория
 
 Монорепо по подсистемам - верхний уровень читается как поток данных (обучение ->
-подача -> клиенты), а не свалкой языков:
+подача), а не свалкой языков. У `training/` и `serving/` свой самодокументируемый
+Makefile (`make -C training help`, `make -C serving help`):
 
 - `training/` - Python: построение признаков, обучение LightGBM и выгрузка
   артефактов с эталонами (`train.py`), helper загрузки RBA (`fetch_rba.sh`),
-  парный дамп паритета (`xparity.py`), ноутбуки валидации и качества
-  (`notebooks/`, jupytext-пары). Среда uv (`pyproject.toml`).
+  парный дамп паритета (`xparity.py`), генерируемые эталоны в `testdata/` (не
+  коммитятся; `make -C training data`). Среда uv (`pyproject.toml`).
 - `serving/` - Go-модуль: cgo-обёртка инференса (`lgbm/`), конвейер
   decline->explain (`pipeline/`), каталог кодов причин (`reasoncode/`), бинарники
-  (`cmd/scorer`, `cmd/dump`). Здесь `go.mod`; команды - `go -C serving ...` или
-  через `make`.
-- `clients/` - примеры запросов к сервису: `http/` (JetBrains) и `postman/`.
-- `paper/` - статья (LaTeX, формат `article`) об этом репозитории.
-- `fixtures/` - закоммиченная RBA-модель, чтобы примеры работали без обучения.
-- `testdata/` - генерируемые эталонные артефакты (не коммитятся; `make data`).
-- `docs/DESIGN.md` - рационал (цель/метод/альтернативы/результат); поглощается
-  статьёй в `paper/`.
+  (`cmd/scorer`, `cmd/dump`), примеры запросов (`clients/http/`, JetBrains HTTP
+  Client) и закоммиченная RBA-фикстура (`fixtures/` - model.txt+codes.json, чтобы
+  примеры работали без обучения). Здесь `go.mod`; команды - `make -C serving ...`.
+- `docs/DESIGN.md` - рационал (цель/метод/альтернативы/результат).
 
 cgo линкует ту же `lib_lightgbm` из venv в `training/.venv`, поэтому `serving/` и
 `training/` - соседи по дизайну (путь зашит в `serving/lgbm/lgbm.go`).
@@ -113,35 +110,16 @@ holdout из 50000 входов (одинаково на Linux x86_64 и macOS a
 0.4%): рабочую точку задают по целевому FPR/recall, порог сервиса настраивается
 флагом `-threshold`. ROC-AUC - оценка без привязки к порогу.
 
-Полная валидация качества - временной сплит против случайного, кривые ROC/PR и
-precision/recall от порога, калибровка, помесячный дрейф, базлайны (логистика и
-простое правило) и глобальный SHAP beeswarm тем же нативным механизмом, что даёт
-per-decision коды причин - в [training/notebooks/rba_validation.ipynb](training/notebooks/rba_validation.ipynb).
-
-Что он показал (на подвыборках для сравнения режимов, чтобы не открывать ноутбук):
-
-- **Дрейф мал, но измерен**: временной сплит (обучение на раннем периоде, тест на
-  позднем) ROC-AUC `0.68` против случайного `0.69`; доля атак растёт по году
-  (`0.098 -> 0.117`). Абсолютную PR-AUC между сплитами сравнивать нельзя (average
-  precision растёт с base rate); по сравнимому lift = PR-AUC/base временной хуже
-  (`1.69x` против `1.86x`) - согласуется с просадкой ROC.
-- **Ансамбль оправдан**: бьёт логистику (ROC-AUC `0.68` против `0.64`) и наивное
-  правило "новое устройство + долгий перерыв" (precision при равном recall `0.44`
-  против `0.01`).
-- **scale_pos_weight не двигает ранжирование** (`0.681 -> 0.682`), влияет лишь на
-  масштаб вероятностей/калибровку.
-
-Качество именно выгруженной `model.txt` на holdout - рабочие точки и подбор порога
-под целевую метрику, lift/gain, срезы по признакам, доверительные интервалы и
-per-decision SHAP на фродовых сессиях - в
-[training/notebooks/rba_quality.ipynb](training/notebooks/rba_quality.ipynb) (команды запуска -
-[training/notebooks/README.md](training/notebooks/README.md)).
+Цифры выше - сводка из `meta.json`, которую пишет `train.py`. Углублённая
+валидация качества (сплиты, калибровка, дрейф, базлайны, срезы) - вне охвата:
+репозиторий доказывает путь подачи и корректность кодов причин, а не эффективность
+детекции.
 
 ## Архитектура
 
 - Сторона Python (`training/train.py`) строит поведенческие признаки из сырого
   датасета RBA, обучает LightGBM и выгружает `model.txt`, матрицу holdout,
-  эталонные предсказания + SHAP и каталог кодов причин в `testdata/`.
+  эталонные предсказания + SHAP и каталог кодов причин в `training/testdata/`.
 - Сторона Go (`serving/lgbm/`) загружает тот же `model.txt` через C API.
 - **Приём для тесного паритета**: cgo линкуется с той же `lib_lightgbm`, что лежит
   внутри uv-venv Python. Go и Python исполняют один и тот же нативный предиктор -
@@ -149,8 +127,8 @@ per-decision SHAP на фродовых сессиях - в
 - Прототипы C-ABI объявлены **вручную** в преамбуле cgo; мы *не* делаем
   `#include <LightGBM/c_api.h>` (он тянет C++/Arrow, которые cgo не компилирует).
 
-Поток данных - вход и выход обеих сторон, что читают ноутбуки и что сервис отдаёт
-наружу по HTTP:
+Поток данных - вход и выход обеих сторон и то, что сервис отдаёт наружу
+по HTTP:
 
 ```mermaid
 flowchart TD
@@ -160,17 +138,13 @@ flowchart TD
         TRAIN["load_rba: 12 признаков<br/>+ обучение LightGBM"]
     end
 
-    subgraph ART["testdata/ - выход обучения"]
+    subgraph ART["training/testdata/ - выход обучения"]
         MODEL["model.txt"]
         HOLD["holdout.csv<br/>признаки 50000 x 12"]
         RREF["ref_raw.csv<br/>эталонная маржа"]
         CREF["ref_contrib.csv<br/>эталонный SHAP"]
         META["meta.json<br/>seed, params, формы, метрики"]
         CODES["codes.json<br/>индекс -> код причины"]
-    end
-
-    subgraph NB["Notebooks - rba_validation, rba_quality"]
-        VAL["rba_validation: сплиты, кривые, калибровка<br/>rba_quality: рабочие точки, порог, срезы, SHAP"]
     end
 
     subgraph GO["Go"]
@@ -186,16 +160,13 @@ flowchart TD
 
     RAW --> TRAIN
     TRAIN --> MODEL & HOLD & RREF & CREF & META & CODES
-    RAW -.->|"load_rba"| VAL
-    MODEL & HOLD & RREF -.-> VAL
     MODEL & HOLD & RREF & CREF & META --> PARITY
     MODEL & CODES --> SCORER
     SCORER --> SCORE & EXPL & MET
 ```
 
-- **Python** (`train.py`): вход - `rba-dataset.csv`; выход - шесть артефактов в `testdata/`.
+- **Python** (`train.py`): вход - `rba-dataset.csv`; выход - шесть артефактов в `training/testdata/`.
 - **Go**: parity-тест читает пять из них (`model.txt`, `holdout.csv`, `ref_raw.csv`, `ref_contrib.csv`, `meta.json`) и сверяет числа; `serving/cmd/scorer` грузит `model.txt` и `codes.json` и обслуживает HTTP.
-- **Ноутбуки**: `rba_validation` читает только `rba-dataset.csv` (`load_rba`) и обучает свои модели; `rba_quality` дополнительно читает выгруженные артефакты (`model.txt`, `holdout.csv`, `ref_*.csv`) и профилирует именно прод-модель.
 
 ## Конвейер decline->explain
 
@@ -205,11 +176,11 @@ SHAP (коды причин: новое устройство, необычный
 асинхронный воркер - шаг SHAP (примерно в 58 раз дороже скоринга) никогда не идёт
 инлайн. Эндпойнты: `POST /score`, `GET /explain/{id}`, `GET /metrics`; мягкое
 завершение сливает очередь объяснений. Каталог adverse-action кодов задаётся через
-`-codes testdata/codes.json` (генерируется `train.py`). Готовые примеры запросов к
-этим эндпойнтам - в `clients/http/scorer.http` (JetBrains HTTP Client) и
-`clients/postman/` (коллекция + окружение). Запустить их без обучения/скачивания -
-на закоммиченной фикстуре RBA-модели: `go -C serving run ./cmd/scorer -model
-../fixtures/model.txt -codes ../fixtures/codes.json` (см. `fixtures/`).
+`-codes <файл>` (генерируется `train.py` в `training/testdata/codes.json`). Готовые
+примеры запросов к этим эндпойнтам - в `serving/clients/http/scorer.http`
+(JetBrains HTTP Client). Запустить без обучения/скачивания, на закоммиченной фикстуре:
+`go -C serving run ./cmd/scorer -model fixtures/model.txt -codes fixtures/codes.json`
+(коротко - `make -C serving run`; см. `serving/fixtures/`).
 
 ## Быстрый старт
 
@@ -217,13 +188,14 @@ SHAP (коды причин: новое устройство, необычный
 (macOS: `brew install libomp`; Linux: `libgomp`, обычно есть).
 
 ```sh
-make data       # синтетика -> testdata/ (для CI, без скачивания)
-make data-rba   # скачать датасет RBA (~9 ГБ) и обучить модель (нужен kaggle CLI)
-make test       # паритет + юнит-тесты
-make bench      # задержка / пропускная способность
+make -C training data      # синтетика -> training/testdata/ (для CI, без скачивания)
+make -C training data-rba  # скачать датасет RBA (~9 ГБ) и обучить (нужен kaggle CLI)
+make -C serving test       # паритет + юнит-тесты
+make -C serving bench      # задержка / пропускная способность
+make -C training help      # полный список целей (так же для serving)
 ```
 
-`make print-env` проверяет путь к нативной библиотеке, с которой линкуется cgo.
+`make -C serving print-env` проверяет путь к нативной библиотеке, с которой линкуется cgo.
 
 ## Нативные грабли (реальная цена cgo + нативной либы)
 
@@ -278,8 +250,6 @@ x86_64, AMD Ryzen 9 5950X, 32 потока; модель 12 признаков /
 - [x] CI: GitHub Actions собирает нативную либу (uv wheel) + паритет / race / bench на Linux
 - [x] Адаптер датасета RBA (`--dataset rba`) + хелпер загрузки через kaggle
 - [x] Конвейер decline->explain: `/score`, асинхронные коды причин, `/explain/{id}`, `/metrics`, мягкое завершение
-- [x] Валидационный ноутбук: temporal split, кривые, калибровка, помесячный дрейф, базлайны, SHAP beeswarm
-- [x] Ноутбук качества выгруженной модели: рабочие точки, подбор порога под целевую метрику, lift/gain, срезы, bootstrap-CI, per-decision SHAP
 
 ## Решения
 

@@ -4,7 +4,7 @@
 // Воркеры explain считают SHAP асинхронно, GET /explain/{id} отдаёт результат,
 // GET /metrics - операционный снимок.
 //
-//	scorer -model ../testdata/model.txt -addr :8080 -threshold 0
+//	scorer -model fixtures/model.txt -addr :8080 -threshold 0
 package main
 
 import (
@@ -25,7 +25,7 @@ import (
 )
 
 func main() {
-	model := flag.String("model", "../testdata/model.txt", "LightGBM model file")
+	model := flag.String("model", "", "LightGBM model file (required, e.g. fixtures/model.txt)")
 	addr := flag.String("addr", ":8080", "listen address")
 	threshold := flag.Float64("threshold", 0, "raw-margin decline threshold (decline if margin > threshold)")
 	queueBuf := flag.Int("queue", 1024, "decline-event queue buffer")
@@ -34,6 +34,10 @@ func main() {
 	workers := flag.Int("workers", 2, "explain worker goroutines (share the Booster pool)")
 	retries := flag.Int("retries", 1, "extra PredictContrib attempts before dead-lettering")
 	flag.Parse()
+
+	if *model == "" {
+		log.Fatal("scorer: -model is required (e.g. -model fixtures/model.txt)")
+	}
 
 	n := runtime.GOMAXPROCS(0)
 	pool, err := lgbm.NewPool(*model, n)

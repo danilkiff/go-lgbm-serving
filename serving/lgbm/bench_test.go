@@ -36,7 +36,7 @@ func readMatrix(path string) ([][]float64, error) {
 func benchData(b *testing.B) (*Booster, [][]float64) {
 	b.Helper()
 	if _, err := os.Stat(tdPath("model.txt")); err != nil {
-		b.Skip("no testdata - run `make data` first")
+		b.Skip("no testdata - run `make -C training data` first")
 	}
 	bo, err := LoadBooster(tdPath("model.txt"))
 	if err != nil {
@@ -79,7 +79,7 @@ func BenchmarkPredictContrib(b *testing.B) {
 // горутин берут хэндлы из пула - форма боевой подачи.
 func BenchmarkPoolRawParallel(b *testing.B) {
 	if _, err := os.Stat(tdPath("model.txt")); err != nil {
-		b.Skip("no testdata - run `make data` first")
+		b.Skip("no testdata - run `make -C training data` first")
 	}
 	X, err := readMatrix(tdPath("holdout.csv"))
 	if err != nil {

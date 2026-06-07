@@ -26,7 +26,7 @@ num_threads - воспроизводимо при одном и том же чи
 "Численный паритет"). Паритет между машинами всё равно требует той же сборки
 liblightgbm; скрипт пишет версию, с которой запускался, в meta.json.
 
-Выходы (в --outdir, по умолчанию ../testdata):
+Выходы (в --outdir, обязателен; напр. testdata):
   model.txt        текстовая модель LightGBM (C API: LGBM_BoosterCreateFromModelfile)
   holdout.csv      матрица признаков holdout; строка заголовка = имена признаков
   ref_raw.csv      эталонная сырая маржа, по значению на строку holdout
@@ -231,10 +231,8 @@ def main() -> None:
     ap.add_argument("--holdout", type=int, default=4000, help="rows held out for the parity check")
     ap.add_argument("--seed", type=int, default=708)
     ap.add_argument("--threads", type=int, default=1, help="LightGBM num_threads (fixed for reproducibility)")
-    ap.add_argument(
-        "--outdir",
-        default=str(pathlib.Path(__file__).resolve().parent.parent / "testdata"),
-    )
+    ap.add_argument("--outdir", required=True,
+                    help="output dir for reference artifacts (e.g. testdata, relative to CWD)")
     args = ap.parse_args()
 
     import lightgbm as lgb
