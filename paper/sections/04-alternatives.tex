@@ -1,9 +1,0 @@
-\section{Рассмотренные альтернативы}
-\label{sec:alternatives}
-
-% TODO(writer). Источник: docs/DESIGN.md "Рассмотренные альтернативы".
-% Двухступенчатая воронка. Фильтр 1 (семейство модели): нейросеть+post-hoc vs
-% GLM vs бустинг+TreeSHAP \cite{lundberg2018,grinsztajn2022}. Фильтр 2 (путь
-% подачи): LightGBM/XGBoost C API дают нативный SHAP, CatBoost-applier и ONNX
-% \cite{onnx1176} - нет; чистый Go проигрывает дважды. Конкуренция: пул хэндлов,
-% num_threads=1, минимальная версия LightGBM >= 3.2.0 \cite{lightgbm3771}.

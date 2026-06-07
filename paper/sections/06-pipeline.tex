@@ -1,9 +1,0 @@
-\section{Конвейер decline\,$\to$\,explain}
-\label{sec:pipeline}
-
-% TODO(writer). Источник: README "Конвейер decline->explain"; DESIGN "Что
-% построено"; код serving/pipeline/ + serving/cmd/scorer.
-% Горячий путь скорит и решает; для отклонений событие выкладывается вне горячего
-% пути, нативный SHAP считает асинхронный воркер. Эндпойнты /score, /explain/{id},
-% /metrics; мягкое завершение сливает очередь. TestHotPathIsolation: p99 /score
-% остаётся далеко ниже одного SHAP при насыщенной очереди.
