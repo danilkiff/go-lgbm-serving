@@ -108,6 +108,12 @@ per-decision коды причин - в [notebooks/rba_validation.ipynb](noteboo
 - **scale_pos_weight не двигает ранжирование** (`0.681 -> 0.682`), влияет лишь на
   масштаб вероятностей/калибровку.
 
+Качество именно выгруженной `model.txt` на holdout - рабочие точки и подбор порога
+под целевую метрику, lift/gain, срезы по признакам, доверительные интервалы и
+per-decision SHAP на фродовых сессиях - в
+[notebooks/rba_quality.ipynb](notebooks/rba_quality.ipynb) (команды запуска -
+[notebooks/README.md](notebooks/README.md)).
+
 ## Архитектура
 
 - Сторона Python (`python/train.py`) строит поведенческие признаки из сырого
@@ -120,6 +126,54 @@ per-decision коды причин - в [notebooks/rba_validation.ipynb](noteboo
 - Прототипы C-ABI объявлены **вручную** в преамбуле cgo; мы *не* делаем
   `#include <LightGBM/c_api.h>` (он тянет C++/Arrow, которые cgo не компилирует).
 
+Поток данных - вход и выход обеих сторон, что читают ноутбуки и что сервис отдаёт
+наружу по HTTP:
+
+```mermaid
+flowchart TD
+    RAW["rba-dataset.csv<br/>сырой датасет RBA, ~33M входов"]
+
+    subgraph PY["Python - python/train.py"]
+        TRAIN["load_rba: 12 признаков<br/>+ обучение LightGBM"]
+    end
+
+    subgraph ART["testdata/ - выход обучения"]
+        MODEL["model.txt"]
+        HOLD["holdout.csv<br/>признаки 50000 x 12"]
+        RREF["ref_raw.csv<br/>эталонная маржа"]
+        CREF["ref_contrib.csv<br/>эталонный SHAP"]
+        META["meta.json<br/>seed, params, формы, метрики"]
+        CODES["codes.json<br/>индекс -> код причины"]
+    end
+
+    subgraph NB["Notebooks - rba_validation, rba_quality"]
+        VAL["rba_validation: сплиты, кривые, калибровка<br/>rba_quality: рабочие точки, порог, срезы, SHAP"]
+    end
+
+    subgraph GO["Go"]
+        PARITY["lgbm parity test:<br/>грузит model.txt, гоняет holdout,<br/>сверяет с ref_raw / ref_contrib"]
+        SCORER["cmd/scorer:<br/>пул Booster + воркеры explain"]
+    end
+
+    subgraph OUT["наружу по HTTP - cmd/scorer"]
+        SCORE["POST /score<br/>in: features [12 x float64]<br/>out: id, margin, decision"]
+        EXPL["GET /explain/{id}<br/>out: id, margin, base, model_ver,<br/>reasons[feature, code, label, direction, contribution]"]
+        MET["GET /metrics<br/>out: scored, declined, decline_rate,<br/>queue_len/cap/dropped, explained, dead_lettered"]
+    end
+
+    RAW --> TRAIN
+    TRAIN --> MODEL & HOLD & RREF & CREF & META & CODES
+    RAW -.->|"load_rba"| VAL
+    MODEL & HOLD & RREF -.-> VAL
+    MODEL & HOLD & RREF & CREF & META --> PARITY
+    MODEL & CODES --> SCORER
+    SCORER --> SCORE & EXPL & MET
+```
+
+- **Python** (`train.py`): вход - `rba-dataset.csv`; выход - шесть артефактов в `testdata/`.
+- **Go**: parity-тест читает пять из них (`model.txt`, `holdout.csv`, `ref_raw.csv`, `ref_contrib.csv`, `meta.json`) и сверяет числа; `cmd/scorer` грузит `model.txt` и `codes.json` и обслуживает HTTP.
+- **Ноутбуки**: `rba_validation` читает только `rba-dataset.csv` (`load_rba`) и обучает свои модели; `rba_quality` дополнительно читает выгруженные артефакты (`model.txt`, `holdout.csv`, `ref_*.csv`) и профилирует именно прод-модель.
+
 ## Конвейер decline->explain
 
 Горячий путь скорит вход и решает (пропустить / запросить доп. фактор или
@@ -128,7 +182,11 @@ SHAP (коды причин: новое устройство, необычный
 асинхронный воркер - шаг SHAP (примерно в 58 раз дороже скоринга) никогда не идёт
 инлайн. Эндпойнты: `POST /score`, `GET /explain/{id}`, `GET /metrics`; мягкое
 завершение сливает очередь объяснений. Каталог adverse-action кодов задаётся через
-`-codes testdata/codes.json` (генерируется `train.py`).
+`-codes testdata/codes.json` (генерируется `train.py`). Готовые примеры запросов к
+этим эндпойнтам - в `http/scorer.http` (JetBrains HTTP Client) и `postman/`
+(коллекция + окружение). Запустить их без обучения/скачивания - на закоммиченной
+фикстуре RBA-модели: `go run ./cmd/scorer -model fixtures/model.txt -codes
+fixtures/codes.json` (см. `fixtures/`).
 
 ## Быстрый старт
 
@@ -198,6 +256,7 @@ x86_64, AMD Ryzen 9 5950X, 32 потока; модель 12 признаков /
 - [x] Адаптер датасета RBA (`--dataset rba`) + хелпер загрузки через kaggle
 - [x] Конвейер decline->explain: `/score`, асинхронные коды причин, `/explain/{id}`, `/metrics`, мягкое завершение
 - [x] Валидационный ноутбук: temporal split, кривые, калибровка, помесячный дрейф, базлайны, SHAP beeswarm
+- [x] Ноутбук качества выгруженной модели: рабочие точки, подбор порога под целевую метрику, lift/gain, срезы, bootstrap-CI, per-decision SHAP
 
 ## Решения
 
