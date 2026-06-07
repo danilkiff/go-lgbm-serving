@@ -16,8 +16,10 @@ data-rba: ## скачать датасет RBA и обучить модель с
 	./python/fetch_rba.sh
 	cd python && uv run python train.py --dataset rba --input ../testdata/rba-dataset.csv --target attack --holdout 50000 --threads 8
 
+# -p 1: пакеты не параллельно, иначе нативный SHAP в lgbm душит CPU и тайминг
+# TestHotPathIsolation в pipeline флейкает.
 test: ## прогнать паритет и юнит-тесты
-	go test -v ./...
+	go test -v -p 1 ./...
 
 race: ## прогнать паритет и тесты конкуренции под детектором гонок
 	go test -race -run 'TestParity|TestPool|TestExplain|TestWorker' ./...
