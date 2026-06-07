@@ -1,0 +1,387 @@
+{
+  "info": {
+    "_postman_id": "403813c7-ac4a-4847-8e66-e62fd077f29e",
+    "name": "go-lgbm-serving scorer",
+    "description": "Конвейер decline->explain. Эндпойнты: POST /score, GET /explain/{id}, GET /metrics.\n\nПеременная {{host}} задана на уровне коллекции (по умолчанию http://localhost:8080); можно переопределить окружением 'go-lgbm-serving local'.\n\nЗапуск сервиса (порт :8080):\n  make run\nили с каталогом кодов причин (читаемые code/label вместо R<idx>):\n  go run ./cmd/scorer -model testdata/model.txt -codes testdata/codes.json\nбез обучения/скачивания - на закоммиченной фикстуре:\n  go run ./cmd/scorer -model fixtures/model.txt -codes fixtures/codes.json\n\nРешение: decline при margin > threshold (по умолчанию 0), иначе approve. Объяснение считается асинхронно, поэтому /explain доступен только для отклонённых транзакций и лишь спустя мгновение после /score.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "POST /score - decline",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var body = pm.response.json();",
+              "pm.test(\"decision is decline\", function () {",
+              "    pm.expect(body.decision).to.eql(\"decline\");",
+              "});",
+              "pm.collectionVariables.set(\"declineId\", body.id);",
+              "console.log(\"decline id=\" + body.id + \" margin=\" + body.margin);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"features\": [384, 1, 3, 1, 1188, 809.6929932, 0, 0, 0, 0, 0, 0]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{host}}/score",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "score"
+          ]
+        },
+        "description": "Отклонение (margin > 0): успешный вход, ничего нового, но 1188 прошлых входов в 3 ночи. Тест кладёт id в переменную коллекции declineId для следующего /explain.\n\nПризнаки - плотный массив из ровно 12 чисел в порядке feature_names model.txt:\n0 rtt_ms, 1 login_successful, 2 hour, 3 dow, 4 n_prior_logins, 5 secs_since_last, 6 is_new_country, 7 is_new_city, 8 is_new_asn, 9 is_new_os, 10 is_new_browser, 11 is_new_device."
+      },
+      "response": []
+    },
+    {
+      "name": "GET /explain/{id} - reason codes",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "// Асинхронный explain: небольшая задержка, чтобы воркер успел",
+              "// сохранить объяснение при прогоне всей коллекции в Runner.",
+              "setTimeout(function () {}, 300);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var body = pm.response.json();",
+              "pm.test(\"has reason codes\", function () {",
+              "    pm.expect(body.reasons).to.be.an(\"array\").that.is.not.empty;",
+              "});",
+              "console.log(\"top reason: \" + body.reasons[0].code + \" (\" +",
+              "    body.reasons[0].direction + \") base=\" + body.base +",
+              "    \" margin=\" + body.margin);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{host}}/explain/{{declineId}}",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "explain",
+            "{{declineId}}"
+          ]
+        },
+        "description": "Коды причин последнего отклонения. Требует, чтобы выше отработал 'POST /score - decline' (переменная declineId).\n\nОбъяснение считается асинхронно (SHAP вне горячего пути). При запуске всей коллекции через Runner pre-request скрипт ждёт 300 мс; при одиночном запуске, если сразу 404, повторить запрос через мгновение."
+      },
+      "response": []
+    },
+    {
+      "name": "POST /score - approve",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var body = pm.response.json();",
+              "pm.test(\"decision is approve\", function () {",
+              "    pm.expect(body.decision).to.eql(\"approve\");",
+              "});",
+              "pm.collectionVariables.set(\"approveId\", body.id);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"features\": [30, 1, 14, 2, 200, 3600, 0, 0, 0, 0, 0, 0]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{host}}/score",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "score"
+          ]
+        },
+        "description": "Одобрение (margin <= 0): вернувшийся пользователь, ничего нового. Тест кладёт id в переменную approveId."
+      },
+      "response": []
+    },
+    {
+      "name": "GET /explain/{id} - 404 for approve",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"404 Not Found\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{host}}/explain/{{approveId}}",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "explain",
+            "{{approveId}}"
+          ]
+        },
+        "description": "Одобрения не объясняются, поэтому id из 'POST /score - approve' всегда даёт 404."
+      },
+      "response": []
+    },
+    {
+      "name": "GET /explain/{id} - 404 unknown id",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"404 Not Found\", function () {",
+              "    pm.response.to.have.status(404);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{host}}/explain/deadbeefdeadbeefdeadbeef",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "explain",
+            "deadbeefdeadbeefdeadbeef"
+          ]
+        },
+        "description": "Неизвестный id -> 404."
+      },
+      "response": []
+    },
+    {
+      "name": "GET /metrics",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"200 OK\", function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "var body = pm.response.json();",
+              "console.log(\"scored=\" + body.scored + \" declined=\" + body.declined +",
+              "    \" decline_rate=\" + body.decline_rate + \" explained=\" + body.explained +",
+              "    \" queue_len=\" + body.queue_len + \" dropped=\" + body.queue_dropped);"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Accept",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{host}}/metrics",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "metrics"
+          ]
+        },
+        "description": "Операционный снимок: счётчики горячего пути, глубина очереди explain и прогресс объяснителя."
+      },
+      "response": []
+    },
+    {
+      "name": "POST /score - 400 bad JSON",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"400 Bad Request\", function () {",
+              "    pm.response.to.have.status(400);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{ \"features\": [1, 2, 3",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{host}}/score",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "score"
+          ]
+        },
+        "description": "Битый JSON -> 400."
+      },
+      "response": []
+    },
+    {
+      "name": "POST /score - 422 wrong feature count",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"422 Unprocessable Entity\", function () {",
+              "    pm.response.to.have.status(422);",
+              "});"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"features\": [1, 2, 3]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "url": {
+          "raw": "{{host}}/score",
+          "host": [
+            "{{host}}"
+          ],
+          "path": [
+            "score"
+          ]
+        },
+        "description": "Неверное число признаков (нужно ровно 12) -> 422."
+      },
+      "response": []
+    }
+  ],
+  "variable": [
+    {
+      "key": "host",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "declineId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "approveId",
+      "value": "",
+      "type": "string"
+    }
+  ]
+}
