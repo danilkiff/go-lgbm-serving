@@ -39,8 +39,8 @@ func TestLoadCSV(t *testing.T) {
 // ключевой инвариант: записанная сырая маржа равна сумме записанных вкладов SHAP,
 // построчно.
 func TestWriteDump(t *testing.T) {
-	model := filepath.Join("..", "..", "testdata", "model.txt")
-	holdout := filepath.Join("..", "..", "testdata", "holdout.csv")
+	model := filepath.Join("..", "..", "..", "testdata", "model.txt")
+	holdout := filepath.Join("..", "..", "..", "testdata", "holdout.csv")
 	if _, err := os.Stat(model); err != nil {
 		t.Skip("no testdata - run `make data` first")
 	}

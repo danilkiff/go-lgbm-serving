@@ -55,9 +55,9 @@ from sklearn.metrics import (
 
 # Корень репозитория (ноутбук может запускаться из любого каталога).
 ROOT = pathlib.Path.cwd().resolve()
-while not (ROOT / "python" / "train.py").exists() and ROOT != ROOT.parent:
+while not (ROOT / "training" / "train.py").exists() and ROOT != ROOT.parent:
     ROOT = ROOT.parent
-sys.path.insert(0, str(ROOT / "python"))
+sys.path.insert(0, str(ROOT / "training"))
 from train import load_rba  # noqa: E402
 
 TD = ROOT / "testdata"

@@ -1,5 +1,5 @@
 # Python / uv
-python/.venv/
+training/.venv/
 __pycache__/
 *.pyc
 .ruff_cache/

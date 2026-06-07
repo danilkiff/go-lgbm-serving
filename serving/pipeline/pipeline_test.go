@@ -13,7 +13,7 @@ func tdPool(t *testing.T) *lgbm.Pool { return tdPoolN(t, runtime.GOMAXPROCS(0)) 
 
 func tdPoolN(t *testing.T, n int) *lgbm.Pool {
 	t.Helper()
-	model := filepath.Join("..", "testdata", "model.txt")
+	model := filepath.Join("..", "..", "testdata", "model.txt")
 	if _, err := os.Stat(model); err != nil {
 		t.Skip("no testdata - run `make data` first")
 	}

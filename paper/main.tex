@@ -1,0 +1,47 @@
+% Статья о репозитории go-lgbm-serving (формат article).
+% Прозу пишем отдельным заходом через skill writer; типографику - через ru-latex.
+% Сборка: latexmk -pdf main.tex (движок pdflatex + biber, см. latexmkrc).
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{csquotes}        % \enquote{} -> кавычки-ёлочки (см. skill writer)
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{siunitx}
+
+% Библиография. style=numeric - переносимая заглушка; при желании заменить на
+% biblatex-gost (ГОСТ Р 7.0.5) в фазе написания.
+\usepackage[backend=biber,style=numeric,sorting=none]{biblatex}
+\usepackage{hyperref}
+\usepackage{cleveref}
+
+\graphicspath{{figures/}}    % фигуры генерируются ноутбуками в paper/figures/
+\addbibresource{assets/refs.bib}
+
+\title{Подача древесной модели сессионного фрода из Go:\\
+       битоточный паритет и нативные коды причин}
+\author{Oleg Y. Danilkiff}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\input{sections/00-abstract}
+\end{abstract}
+
+\input{sections/01-introduction}
+\input{sections/02-data-features}
+\input{sections/03-method}
+\input{sections/04-alternatives}
+\input{sections/05-results}
+\input{sections/06-pipeline}
+\input{sections/07-scope}
+\input{sections/08-conclusion}
+
+\printbibliography
+
+\end{document}

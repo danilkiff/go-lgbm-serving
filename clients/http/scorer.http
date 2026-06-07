@@ -7,9 +7,9 @@
 # Запуск сервиса (порт по умолчанию :8080):
 #   make run
 # или с каталогом кодов причин (читаемые code/label вместо обобщённых R<idx>):
-#   go run ./cmd/scorer -model testdata/model.txt -codes testdata/codes.json
+#   go -C serving run ./cmd/scorer -model ../testdata/model.txt -codes ../testdata/codes.json
 # без обучения/скачивания - на закоммиченной фикстуре RBA-модели:
-#   go run ./cmd/scorer -model fixtures/model.txt -codes fixtures/codes.json
+#   go -C serving run ./cmd/scorer -model ../fixtures/model.txt -codes ../fixtures/codes.json
 #
 # Запрос на /score - плотный массив "features" из ровно 12 чисел в этом порядке
 # (имена из model.txt feature_names):

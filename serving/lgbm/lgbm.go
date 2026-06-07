@@ -6,7 +6,7 @@
 // Прототипы C-ABI объявлены вручную, без #include <LightGBM/c_api.h>: этот
 // заголовок тянет C++/Arrow, которые преамбула cgo не компилирует. C API -
 // стабильная поверхность extern "C"; прототипы ниже отвечают LightGBM 4.x.
-// Версию либы фиксируем соответственно (см. python/pyproject.toml).
+// Версию либы фиксируем соответственно (см. training/pyproject.toml).
 //
 // Потокобезопасность: предсказание на одном хэндле Booster сериализуется внутри
 // C API (LightGBM #3751/#3771). Не делите один Booster между горутинами ради
@@ -32,7 +32,7 @@ extern int LGBM_BoosterPredictForMat(BoosterHandle handle, const void* data, int
 // применяется один раз. ${SRCDIR} - каталог этого пакета, поэтому путь к
 // lib_lightgbm из uv-venv (Python зафиксирован на 3.12 через .python-version)
 // стабилен, и голый `go build ./...` собирается без настройки окружения.
-#cgo LDFLAGS: -L${SRCDIR}/../python/.venv/lib/python3.12/site-packages/lightgbm/lib -Wl,-rpath,${SRCDIR}/../python/.venv/lib/python3.12/site-packages/lightgbm/lib -l_lightgbm
+#cgo LDFLAGS: -L${SRCDIR}/../../training/.venv/lib/python3.12/site-packages/lightgbm/lib -Wl,-rpath,${SRCDIR}/../../training/.venv/lib/python3.12/site-packages/lightgbm/lib -l_lightgbm
 #cgo darwin LDFLAGS: -Wl,-rpath,/opt/homebrew/opt/libomp/lib
 */
 import "C"

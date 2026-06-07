@@ -1,0 +1,14 @@
+# Артефакты сборки LaTeX (пересобираются latexmk).
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.run.xml
+*.toc
+*.synctex.gz
+# Готовый PDF собирается локально; коммитить ли - решается отдельно.
+main.pdf

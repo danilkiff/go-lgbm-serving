@@ -4,7 +4,7 @@
 // Воркеры explain считают SHAP асинхронно, GET /explain/{id} отдаёт результат,
 // GET /metrics - операционный снимок.
 //
-//	scorer -model testdata/model.txt -addr :8080 -threshold 0
+//	scorer -model ../testdata/model.txt -addr :8080 -threshold 0
 package main
 
 import (
@@ -25,7 +25,7 @@ import (
 )
 
 func main() {
-	model := flag.String("model", "testdata/model.txt", "LightGBM model file")
+	model := flag.String("model", "../testdata/model.txt", "LightGBM model file")
 	addr := flag.String("addr", ":8080", "listen address")
 	threshold := flag.Float64("threshold", 0, "raw-margin decline threshold (decline if margin > threshold)")
 	queueBuf := flag.Int("queue", 1024, "decline-event queue buffer")

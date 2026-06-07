@@ -17,6 +17,29 @@
 (включая то, почему нативный SHAP достижим для LightGBM/XGBoost, но не для
 CatBoost/ONNX) - в [docs/DESIGN.md](docs/DESIGN.md); этот README - сводка.
 
+## Структура репозитория
+
+Монорепо по подсистемам - верхний уровень читается как поток данных (обучение ->
+подача -> клиенты), а не свалкой языков:
+
+- `training/` - Python: построение признаков, обучение LightGBM и выгрузка
+  артефактов с эталонами (`train.py`), helper загрузки RBA (`fetch_rba.sh`),
+  парный дамп паритета (`xparity.py`), ноутбуки валидации и качества
+  (`notebooks/`, jupytext-пары). Среда uv (`pyproject.toml`).
+- `serving/` - Go-модуль: cgo-обёртка инференса (`lgbm/`), конвейер
+  decline->explain (`pipeline/`), каталог кодов причин (`reasoncode/`), бинарники
+  (`cmd/scorer`, `cmd/dump`). Здесь `go.mod`; команды - `go -C serving ...` или
+  через `make`.
+- `clients/` - примеры запросов к сервису: `http/` (JetBrains) и `postman/`.
+- `paper/` - статья (LaTeX, формат `article`) об этом репозитории.
+- `fixtures/` - закоммиченная RBA-модель, чтобы примеры работали без обучения.
+- `testdata/` - генерируемые эталонные артефакты (не коммитятся; `make data`).
+- `docs/DESIGN.md` - рационал (цель/метод/альтернативы/результат); поглощается
+  статьёй в `paper/`.
+
+cgo линкует ту же `lib_lightgbm` из venv в `training/.venv`, поэтому `serving/` и
+`training/` - соседи по дизайну (путь зашит в `serving/lgbm/lgbm.go`).
+
 ## Что доказано и что нет
 
 **Доказано** (инженерия, путь подачи):
@@ -48,7 +71,7 @@ CatBoost/ONNX) - в [docs/DESIGN.md](docs/DESIGN.md); этот README - свод
   `Is Attack IP` выводится из IP, а страна/ASN тоже из IP, поэтому их частота
   почти напрямую читает метку (в эксперименте давала 98.5% gain - тривиальный
   шорткат, а не объяснимый сигнал). Это решение выводится из комментариев в
-  [`python/train.py`](python/train.py).
+  [`training/train.py`](training/train.py).
 
 ## Результат: паритет на одной сборке битоточный
 
@@ -93,7 +116,7 @@ holdout из 50000 входов (одинаково на Linux x86_64 и macOS a
 Полная валидация качества - временной сплит против случайного, кривые ROC/PR и
 precision/recall от порога, калибровка, помесячный дрейф, базлайны (логистика и
 простое правило) и глобальный SHAP beeswarm тем же нативным механизмом, что даёт
-per-decision коды причин - в [notebooks/rba_validation.ipynb](notebooks/rba_validation.ipynb).
+per-decision коды причин - в [training/notebooks/rba_validation.ipynb](training/notebooks/rba_validation.ipynb).
 
 Что он показал (на подвыборках для сравнения режимов, чтобы не открывать ноутбук):
 
@@ -111,15 +134,15 @@ per-decision коды причин - в [notebooks/rba_validation.ipynb](noteboo
 Качество именно выгруженной `model.txt` на holdout - рабочие точки и подбор порога
 под целевую метрику, lift/gain, срезы по признакам, доверительные интервалы и
 per-decision SHAP на фродовых сессиях - в
-[notebooks/rba_quality.ipynb](notebooks/rba_quality.ipynb) (команды запуска -
-[notebooks/README.md](notebooks/README.md)).
+[training/notebooks/rba_quality.ipynb](training/notebooks/rba_quality.ipynb) (команды запуска -
+[training/notebooks/README.md](training/notebooks/README.md)).
 
 ## Архитектура
 
-- Сторона Python (`python/train.py`) строит поведенческие признаки из сырого
+- Сторона Python (`training/train.py`) строит поведенческие признаки из сырого
   датасета RBA, обучает LightGBM и выгружает `model.txt`, матрицу holdout,
   эталонные предсказания + SHAP и каталог кодов причин в `testdata/`.
-- Сторона Go (`lgbm/`) загружает тот же `model.txt` через C API.
+- Сторона Go (`serving/lgbm/`) загружает тот же `model.txt` через C API.
 - **Приём для тесного паритета**: cgo линкуется с той же `lib_lightgbm`, что лежит
   внутри uv-venv Python. Go и Python исполняют один и тот же нативный предиктор -
   паритет настолько точен, насколько позволяет платформа.
@@ -133,7 +156,7 @@ per-decision SHAP на фродовых сессиях - в
 flowchart TD
     RAW["rba-dataset.csv<br/>сырой датасет RBA, ~33M входов"]
 
-    subgraph PY["Python - python/train.py"]
+    subgraph PY["Python - training/ (train.py)"]
         TRAIN["load_rba: 12 признаков<br/>+ обучение LightGBM"]
     end
 
@@ -151,11 +174,11 @@ flowchart TD
     end
 
     subgraph GO["Go"]
-        PARITY["lgbm parity test:<br/>грузит model.txt, гоняет holdout,<br/>сверяет с ref_raw / ref_contrib"]
-        SCORER["cmd/scorer:<br/>пул Booster + воркеры explain"]
+        PARITY["serving/lgbm parity test:<br/>грузит model.txt, гоняет holdout,<br/>сверяет с ref_raw / ref_contrib"]
+        SCORER["serving/cmd/scorer:<br/>пул Booster + воркеры explain"]
     end
 
-    subgraph OUT["наружу по HTTP - cmd/scorer"]
+    subgraph OUT["наружу по HTTP - serving/cmd/scorer"]
         SCORE["POST /score<br/>in: features [12 x float64]<br/>out: id, margin, decision"]
         EXPL["GET /explain/{id}<br/>out: id, margin, base, model_ver,<br/>reasons[feature, code, label, direction, contribution]"]
         MET["GET /metrics<br/>out: scored, declined, decline_rate,<br/>queue_len/cap/dropped, explained, dead_lettered"]
@@ -171,7 +194,7 @@ flowchart TD
 ```
 
 - **Python** (`train.py`): вход - `rba-dataset.csv`; выход - шесть артефактов в `testdata/`.
-- **Go**: parity-тест читает пять из них (`model.txt`, `holdout.csv`, `ref_raw.csv`, `ref_contrib.csv`, `meta.json`) и сверяет числа; `cmd/scorer` грузит `model.txt` и `codes.json` и обслуживает HTTP.
+- **Go**: parity-тест читает пять из них (`model.txt`, `holdout.csv`, `ref_raw.csv`, `ref_contrib.csv`, `meta.json`) и сверяет числа; `serving/cmd/scorer` грузит `model.txt` и `codes.json` и обслуживает HTTP.
 - **Ноутбуки**: `rba_validation` читает только `rba-dataset.csv` (`load_rba`) и обучает свои модели; `rba_quality` дополнительно читает выгруженные артефакты (`model.txt`, `holdout.csv`, `ref_*.csv`) и профилирует именно прод-модель.
 
 ## Конвейер decline->explain
@@ -183,10 +206,10 @@ SHAP (коды причин: новое устройство, необычный
 инлайн. Эндпойнты: `POST /score`, `GET /explain/{id}`, `GET /metrics`; мягкое
 завершение сливает очередь объяснений. Каталог adverse-action кодов задаётся через
 `-codes testdata/codes.json` (генерируется `train.py`). Готовые примеры запросов к
-этим эндпойнтам - в `http/scorer.http` (JetBrains HTTP Client) и `postman/`
-(коллекция + окружение). Запустить их без обучения/скачивания - на закоммиченной
-фикстуре RBA-модели: `go run ./cmd/scorer -model fixtures/model.txt -codes
-fixtures/codes.json` (см. `fixtures/`).
+этим эндпойнтам - в `clients/http/scorer.http` (JetBrains HTTP Client) и
+`clients/postman/` (коллекция + окружение). Запустить их без обучения/скачивания -
+на закоммиченной фикстуре RBA-модели: `go -C serving run ./cmd/scorer -model
+../fixtures/model.txt -codes ../fixtures/codes.json` (см. `fixtures/`).
 
 ## Быстрый старт
 
@@ -205,7 +228,7 @@ make bench      # задержка / пропускная способность
 ## Нативные грабли (реальная цена cgo + нативной либы)
 
 - **Рантайм OpenMP**: `lib_lightgbm` линкует `@rpath/libomp.dylib`. Без него
-  библиотека не сделает `dlopen`. Директива `#cgo darwin` в `lgbm/lgbm.go`
+  библиотека не сделает `dlopen`. Директива `#cgo darwin` в `serving/lgbm/lgbm.go`
   добавляет rpath к brew libomp на macOS.
 - **Пиннинг потоков**: предсказание передаёт `num_threads=1`. Порядок редукции
   float в многопоточном OpenMP - источник недетерминизма; параллелизм держим на
@@ -220,7 +243,7 @@ make bench      # задержка / пропускная способность
 
 `deterministic=true, force_row_wise=true` плюс фиксированное число потоков -
 воспроизводимое обучение при одном числе потоков; обучение их использует.
-Инференс пинится к `num_threads=1` (в `lgbm/lgbm.go`) - это и есть критичная для
+Инференс пинится к `num_threads=1` (в `serving/lgbm/lgbm.go`) - это и есть критичная для
 паритета настройка. Битоточный паритет держится на одной сборке либы и платформе.
 Кросс-платформенно остаток *измеряется*, а не предполагается: для детерминированного
 float64-инференса фиксированной модели сырая маржа вышла битоточно идентичной

@@ -12,22 +12,22 @@
   сессиях.
 
 Оба ноутбука тяжёлые: грузят весь датасет RBA (~31M строк) через `load_rba` из
-`python/train.py`. Нужны артефакты в `testdata/` (сначала `make data-rba`), для
+`training/train.py`. Нужны артефакты в `testdata/` (сначала `make data-rba`), для
 `rba_quality` - ещё `model.txt` / `holdout.csv` / `ref_*.csv`. Рассчитаны на машину
 с большой памятью.
 
-Окружение - uv-venv в `python/` (там `pyproject.toml`). Все команды ниже - из
-каталога `python/`:
+Окружение - uv-venv в `training/` (там `pyproject.toml`). Все команды ниже - из
+каталога `training/`:
 
 ```sh
-cd python
+cd training
 ```
 
 ## Генерация ноутбука из .py
 
 ```sh
-uv run jupytext --to notebook ../notebooks/rba_quality.py   # .py -> .ipynb (без выводов)
-uv run jupytext --sync     ../notebooks/rba_quality.py      # двусторонняя синхронизация .py <-> .ipynb
+uv run jupytext --to notebook notebooks/rba_quality.py   # .py -> .ipynb (без выводов)
+uv run jupytext --sync     notebooks/rba_quality.py      # двусторонняя синхронизация .py <-> .ipynb
 ```
 
 ## Запуск ноутбука из CLI (с выводами)
@@ -44,19 +44,19 @@ uv run python -m ipykernel install --user --name lgbm-rba --display-name lgbm-rb
 uv run jupyter nbconvert --to notebook --execute --inplace \
   --ExecutePreprocessor.kernel_name=lgbm-rba \
   --ExecutePreprocessor.timeout=3600 \
-  ../notebooks/rba_quality.ipynb
+  notebooks/rba_quality.ipynb
 ```
 
 Либо одной командой из `.py` (конвертация + исполнение сразу):
 
 ```sh
-uv run jupytext --to notebook --execute ../notebooks/rba_quality.py
+uv run jupytext --to notebook --execute notebooks/rba_quality.py
 ```
 
 Интерактивно (правка в браузере; при сохранении jupytext синхронит `.ipynb` и `.py`):
 
 ```sh
-uv run jupyter lab   # открыть ../notebooks/*.ipynb
+uv run jupyter lab   # открыть notebooks/*.ipynb
 ```
 
 Локально вместо `uv run <cmd>` можно звать бинарь venv напрямую: `./.venv/bin/<cmd>`.

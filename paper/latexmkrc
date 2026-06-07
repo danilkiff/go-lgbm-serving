@@ -1,0 +1,4 @@
+# Сборка: latexmk -pdf main.tex
+# Движок pdflatex (кириллица через T2A + babel). biblatex/biber latexmk
+# подхватывает автоматически по .bcf.
+$pdf_mode = 1;
