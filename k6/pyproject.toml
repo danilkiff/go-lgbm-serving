@@ -1,0 +1,13 @@
+[project]
+name = "lgbm-bench-notebook"
+version = "0.1.0"
+description = "Разбор k6-прогонов: ноутбук с графиками (seaborn) по results/run-*"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "jupyter>=1.1,<2",
+    "seaborn>=0.13,<0.14",
+]
+
+[tool.uv]
+# Не пакет, а только окружение для ноутбука: uv sync не пытается собрать проект.
+package = false

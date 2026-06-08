@@ -1,0 +1,10 @@
+{
+  "title":     "explain=async, 4000 rps",
+  "explain":   "async",
+  "rate":      4000,
+  "duration":  "30s",
+  "workers":   2,
+  "threshold": -3.166091,
+  "host":      "Darwin 25.5.0 arm64",
+  "cpu":       "Apple M4 Pro"
+}
