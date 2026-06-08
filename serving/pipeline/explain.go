@@ -155,11 +155,24 @@ func (w *Worker) explain(e DeclineEvent) (Explanation, error) {
 	if err != nil {
 		return Explanation{}, err
 	}
-	nf := len(contrib) - 1 // последний элемент - base value
-	top := reasoncode.TopK(contrib[:nf], w.cfg.K)
+	return Explanation{
+		ID:       e.ID,
+		Margin:   e.Margin,
+		Base:     contrib[len(contrib)-1], // последний элемент - base value
+		Reasons:  buildReasons(contrib, w.cfg.K, w.cfg.Catalog),
+		ModelVer: e.ModelVer,
+	}, nil
+}
+
+// buildReasons ранжирует топ-K кодов причин из contributions (последний элемент -
+// base value, в ранжирование не входит). Общий код фонового (Worker) и горячего
+// (InlineScorer) путей объяснения, чтобы они не разошлись.
+func buildReasons(contrib []float64, k int, catalog *reasoncode.Catalog) []ReasonCode {
+	nf := len(contrib) - 1
+	top := reasoncode.TopK(contrib[:nf], k)
 	reasons := make([]ReasonCode, len(top))
 	for i, idx := range top {
-		code := w.cfg.Catalog.Lookup(idx)
+		code := catalog.Lookup(idx)
 		reasons[i] = ReasonCode{
 			Feature:      idx,
 			Code:         code.Code,
@@ -168,11 +181,5 @@ func (w *Worker) explain(e DeclineEvent) (Explanation, error) {
 			Contribution: contrib[idx],
 		}
 	}
-	return Explanation{
-		ID:       e.ID,
-		Margin:   e.Margin,
-		Base:     contrib[nf],
-		Reasons:  reasons,
-		ModelVer: e.ModelVer,
-	}, nil
+	return reasons
 }
