@@ -1,8 +1,10 @@
 // Команда scorer - сервис decline->explain. POST /score возвращает решение из
-// пула Booster LightGBM и для отклонений выкладывает DeclineEvent вне горячего
-// пути; шаг SHAP (примерно в 58 раз дороже скоринга) никогда не идёт инлайн.
-// Воркеры explain считают SHAP асинхронно, GET /explain/{id} отдаёт результат,
-// GET /metrics - операционный снимок.
+// пула Booster LightGBM. Режим -explain задаёт, где считается SHAP: async - для
+// отклонений выкладывается DeclineEvent, воркеры считают SHAP вне горячего пути
+// (под нагрузкой объяснение может быть отброшено при переполнении очереди);
+// inline - SHAP считается на горячем пути для каждого решения и сохраняется до
+// ответа (не теряется никогда, но каждый /score платит полный SHAP). GET
+// /explain/{id} отдаёт объяснение, GET /metrics - операционный снимок.
 //
 //	scorer -model fixtures/model.txt -addr :8080 -threshold 0
 package main
@@ -12,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -32,71 +35,122 @@ func main() {
 	queueBuf := flag.Int("queue", 1024, "decline-event queue buffer")
 	topk := flag.Int("topk", 3, "reason codes per explanation")
 	codes := flag.String("codes", "", "optional JSON file mapping feature index to adverse-action {code,label}")
-	workers := flag.Int("workers", 2, "explain worker goroutines (share the Booster pool)")
+	workers := flag.Int("workers", 2, "explain worker goroutines (explain=async)")
+	storeKind := flag.String("store", "mem", "explanation store backend: mem | postgres")
+	dsn := flag.String("dsn", "", "postgres DSN for -store=postgres (falls back to $SCORER_DSN)")
+	explainMode := flag.String("explain", "async", "explanation path: async (off the hot path, may drop under load) | inline (computed on the hot path for every decision, never dropped)")
 	flag.Parse()
 
 	if *model == "" {
 		log.Fatal("scorer: -model is required (e.g. -model fixtures/model.txt)")
 	}
 
-	// Горячий путь и explain владеют независимыми пулами хэндлов одной модели:
-	// SHAP-воркеры физически не могут занять хэндлы скоринга, поэтому насыщенный
-	// explain не добавляет задержки /score (см. TestHotPathIsolation). Цена -
-	// nWorkers лишних копий модели в памяти.
-	nWorkers := max(*workers, 1)
 	n := runtime.GOMAXPROCS(0)
 	hotPool, err := lgbm.NewPool(*model, n)
 	if err != nil {
 		log.Fatalf("scorer: load hot pool: %v", err)
 	}
-	explainPool, err := lgbm.NewPool(*model, nWorkers)
-	if err != nil {
-		hotPool.Close()
-		log.Fatalf("scorer: load explain pool: %v", err)
-	}
 	var catalog *reasoncode.Catalog
 	if *codes != "" {
 		if catalog, err = reasoncode.LoadCatalog(*codes); err != nil {
 			hotPool.Close()
-			explainPool.Close()
 			log.Fatalf("scorer: load codes: %v", err)
 		}
 	}
+	store, closeStore, err := newStore(*storeKind, *dsn)
+	if err != nil {
+		hotPool.Close()
+		log.Fatalf("scorer: %v", err)
+	}
 
-	queue := pipeline.NewChannelQueue(*queueBuf)
-	store := pipeline.NewMemStore()
-	scorer := pipeline.NewScorer(hotPool, *threshold, *model, queue, func(e pipeline.DeclineEvent) {
-		log.Printf("score: decline id=%s dropped, explain queue full (queue_dropped=%d)", e.ID, queue.Dropped())
-	})
-	worker := pipeline.NewWorker(explainPool, store, pipeline.WorkerConfig{
-		K:       *topk,
-		Catalog: catalog,
-		DeadLetter: func(e pipeline.DeclineEvent, err error) {
-			log.Printf("explain: dead-letter id=%s: %v", e.ID, err)
-		},
-	})
+	// Горячий путь, снимок метрик и слив на завершении зависят от режима explain.
+	var hot scorer
+	var snapshot func() metricsResponse
+	var drain func()
 
-	// Воркеры explain считают SHAP на своём пуле, асинхронно; на /score стоимость
-	// не попадает.
-	workerCtx, cancelWorkers := context.WithCancel(context.Background())
-	defer cancelWorkers()
-	waitWorkers := worker.Start(workerCtx, queue.Events(), nWorkers)
+	switch *explainMode {
+	case "inline":
+		// Объяснение считается на горячем пути для КАЖДОГО решения и сохраняется
+		// до ответа: ни очереди, ни воркеров - потерять его под нагрузкой нечему.
+		// Цена - каждый /score платит полный SHAP (PredictContrib, примерно в
+		// 46-58 раз дороже PredictRaw), а не только скоринг.
+		sc := pipeline.NewInlineScorer(hotPool, *threshold, *model, store, *topk, catalog)
+		hot = sc
+		snapshot = func() metricsResponse {
+			scored, declined := sc.Counts()
+			m := metricsResponse{Scored: scored, Declined: declined, Explained: scored}
+			if scored > 0 {
+				m.DeclineRate = float64(declined) / float64(scored)
+			}
+			return m
+		}
+		drain = func() {}
+		log.Printf("scorer: explain=inline, %d hot handles, store=%s, threshold=%g, top-%d reason codes, listening on %s", n, *storeKind, *threshold, *topk, *addr)
+
+	case "async":
+		// Горячий путь и explain владеют независимыми пулами хэндлов одной модели:
+		// SHAP-воркеры физически не могут занять хэндлы скоринга (см.
+		// TestHotPathIsolation). Цена - nWorkers лишних копий модели в памяти.
+		nWorkers := max(*workers, 1)
+		explainPool, perr := lgbm.NewPool(*model, nWorkers)
+		if perr != nil {
+			hotPool.Close()
+			closeStore()
+			log.Fatalf("scorer: load explain pool: %v", perr)
+		}
+		queue := pipeline.NewChannelQueue(*queueBuf)
+		sc := pipeline.NewScorer(hotPool, *threshold, *model, queue, func(e pipeline.DeclineEvent) {
+			log.Printf("score: decline id=%s dropped, explain queue full (queue_dropped=%d)", e.ID, queue.Dropped())
+		})
+		worker := pipeline.NewWorker(explainPool, store, pipeline.WorkerConfig{
+			K:       *topk,
+			Catalog: catalog,
+			DeadLetter: func(e pipeline.DeclineEvent, err error) {
+				log.Printf("explain: dead-letter id=%s: %v", e.ID, err)
+			},
+		})
+		workerCtx, cancelWorkers := context.WithCancel(context.Background())
+		waitWorkers := worker.Start(workerCtx, queue.Events(), nWorkers)
+		hot = sc
+		snapshot = func() metricsResponse {
+			scored, declined := sc.Counts()
+			m := metricsResponse{
+				Scored: scored, Declined: declined,
+				QueueLen: queue.Len(), QueueCap: queue.Cap(), QueueDropped: queue.Dropped(),
+				Explained: worker.Explained(), DeadLettered: worker.Dropped(),
+			}
+			if scored > 0 {
+				m.DeclineRate = float64(declined) / float64(scored)
+			}
+			return m
+		}
+		// Слить очередь: после Shutdown издателей нет -> воркеры дочищают остаток.
+		drain = func() {
+			queue.Close()
+			done := make(chan struct{})
+			go func() { waitWorkers(); close(done) }()
+			select {
+			case <-done:
+			case <-time.After(10 * time.Second):
+				log.Printf("scorer: explain drain timed out, %d events unprocessed", queue.Len())
+				cancelWorkers()
+				waitWorkers()
+			}
+			cancelWorkers()
+			explainPool.Close()
+		}
+		log.Printf("scorer: explain=async, %d hot handles + %d explain handles, store=%s, threshold=%g, top-%d reason codes, listening on %s", n, nWorkers, *storeKind, *threshold, *topk, *addr)
+
+	default:
+		hotPool.Close()
+		closeStore()
+		log.Fatalf("scorer: unknown -explain %q (want async|inline)", *explainMode)
+	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /score", scoreHandler(scorer, maxScoreBody))
+	mux.HandleFunc("POST /score", scoreHandler(hot, maxScoreBody))
 	mux.HandleFunc("GET /explain/{id}", explainHandler(store))
-	mux.HandleFunc("GET /metrics", metricsHandler(func() metricsResponse {
-		scored, declined := scorer.Counts()
-		m := metricsResponse{
-			Scored: scored, Declined: declined,
-			QueueLen: queue.Len(), QueueCap: queue.Cap(), QueueDropped: queue.Dropped(),
-			Explained: worker.Explained(), DeadLettered: worker.Dropped(),
-		}
-		if scored > 0 {
-			m.DeclineRate = float64(declined) / float64(scored)
-		}
-		return m
-	}))
+	mux.HandleFunc("GET /metrics", metricsHandler(snapshot))
 
 	srv := &http.Server{Addr: *addr, Handler: mux}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -104,7 +158,6 @@ func main() {
 
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.ListenAndServe() }()
-	log.Printf("scorer: %d hot handles + %d explain handles, threshold=%g, top-%d reason codes, listening on %s", n, nWorkers, *threshold, *topk, *addr)
 
 	select {
 	case err := <-serveErr:
@@ -115,26 +168,38 @@ func main() {
 		log.Printf("scorer: signal received, draining...")
 	}
 
-	// Мягкое завершение, по порядку: перестать принимать запросы (доделав
-	// текущие), слить очередь explain, затем освободить хэндлы модели.
+	// Мягкое завершение: перестать принимать запросы (доделав текущие), затем (для
+	// async) слить очередь explain, затем освободить хэндлы модели и хранилище.
 	shutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutCtx); err != nil {
 		log.Printf("scorer: http shutdown: %v", err)
 	}
-	queue.Close() // после Shutdown издателей нет -> воркеры дочищают очередь
-	drained := make(chan struct{})
-	go func() { waitWorkers(); close(drained) }()
-	select {
-	case <-drained:
-	case <-shutCtx.Done():
-		log.Printf("scorer: explain drain timed out, %d events unprocessed", queue.Len())
-		cancelWorkers()
-		waitWorkers()
-	}
-	explainPool.Close()
+	drain()
 	hotPool.Close()
+	closeStore()
 	log.Printf("scorer: stopped")
+}
+
+// newStore выбирает бэкенд хранилища объяснений. mem - in-process MemStore;
+// postgres - PgStore (DSN из -dsn или $SCORER_DSN). Возвращает хранилище и
+// функцию его закрытия (для MemStore - no-op).
+func newStore(kind, dsn string) (pipeline.Store, func(), error) {
+	switch kind {
+	case "mem":
+		return pipeline.NewMemStore(), func() {}, nil
+	case "postgres":
+		if dsn == "" {
+			dsn = os.Getenv("SCORER_DSN")
+		}
+		pg, err := pipeline.NewPgStore(context.Background(), dsn)
+		if err != nil {
+			return nil, nil, err
+		}
+		return pg, pg.Close, nil
+	default:
+		return nil, nil, fmt.Errorf("unknown -store %q (want mem|postgres)", kind)
+	}
 }
 
 // scorer - поведение горячего пути, нужное HTTP-обработчику; *pipeline.Scorer
