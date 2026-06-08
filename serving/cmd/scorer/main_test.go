@@ -24,7 +24,7 @@ func (f *fakeScorer) Score(row []float64) (pipeline.ScoreResult, error) {
 
 func TestScoreHandler(t *testing.T) {
 	f := &fakeScorer{res: pipeline.ScoreResult{ID: "abc", Margin: 1.5, Decision: pipeline.Decline}}
-	h := scoreHandler(f)
+	h := scoreHandler(f, maxScoreBody)
 
 	body, _ := json.Marshal(scoreRequest{Features: []float64{1, 2, 3}})
 	rec := httptest.NewRecorder()
@@ -46,11 +46,23 @@ func TestScoreHandler(t *testing.T) {
 }
 
 func TestScoreHandlerBadJSON(t *testing.T) {
-	h := scoreHandler(&fakeScorer{})
+	h := scoreHandler(&fakeScorer{}, maxScoreBody)
 	rec := httptest.NewRecorder()
 	h(rec, httptest.NewRequest(http.MethodPost, "/score", bytes.NewReader([]byte("{not json"))))
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d, want 400", rec.Code)
+	}
+}
+
+// TestScoreHandlerBodyTooLarge проверяет, что тело сверх лимита отбивается 413, а
+// не читается в память целиком. Лимит крошечный, чтобы не плодить мегабайтное тело.
+func TestScoreHandlerBodyTooLarge(t *testing.T) {
+	h := scoreHandler(&fakeScorer{}, 16)
+	body := []byte(`{"features":[1,2,3,4,5,6,7,8,9,10]}`) // заведомо длиннее 16 байт
+	rec := httptest.NewRecorder()
+	h(rec, httptest.NewRequest(http.MethodPost, "/score", bytes.NewReader(body)))
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("status=%d, want 413", rec.Code)
 	}
 }
 

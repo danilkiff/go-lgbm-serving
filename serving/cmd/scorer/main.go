@@ -10,6 +10,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"log"
 	"net/http"
@@ -82,7 +83,7 @@ func main() {
 	waitWorkers := worker.Start(workerCtx, queue.Events(), nWorkers)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /score", scoreHandler(scorer))
+	mux.HandleFunc("POST /score", scoreHandler(scorer, maxScoreBody))
 	mux.HandleFunc("GET /explain/{id}", explainHandler(store))
 	mux.HandleFunc("GET /metrics", metricsHandler(func() metricsResponse {
 		scored, declined := scorer.Counts()
@@ -152,10 +153,19 @@ type scoreResponse struct {
 	Decision string  `json:"decision"`
 }
 
-func scoreHandler(s scorer) http.HandlerFunc {
+// maxScoreBody - потолок размера тела POST /score. Вектор признаков - десятки
+// float64; для недоверенного клиента это защита от чтения произвольно большого тела в память.
+const maxScoreBody = 10240 // 10 KiB
+
+func scoreHandler(s scorer, maxBody int64) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 		var req scoreRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
 			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 			return
 		}
