@@ -1,0 +1,39 @@
+# syntax=docker/dockerfile:1
+# Образ scorer: cgo-сборка против LightGBM. Контекст сборки - корень репозитория.
+FROM golang:1.26-bookworm
+
+# gcc - для cgo; libgomp1 - OpenMP-зависимость lib_lightgbm в рантайме;
+# python - чтобы достать колесо lightgbm с готовой lib_lightgbm.so.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        gcc python3 python3-venv python3-pip libgomp1 curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+
+# Директива #cgo в serving/lgbm/lgbm.go жёстко указывает на
+# training/.venv/lib/python3.12/site-packages/lightgbm/lib (относительно
+# serving/lgbm). Воссоздаём этот layout: ставим колесо lightgbm (--no-deps: нужна
+# только .so, не numpy/scipy) и симлинкуем реальный каталог lib под python3.12,
+# чтобы и линковка, и rpath в рантайме нашли lib_lightgbm.so.
+RUN set -eux; \
+    python3 -m venv /src/training/.venv; \
+    /src/training/.venv/bin/pip install --no-cache-dir --no-deps lightgbm; \
+    so="$(find /src/training/.venv -name lib_lightgbm.so | head -1)"; \
+    test -n "$so"; \
+    mkdir -p /src/training/.venv/lib/python3.12/site-packages/lightgbm; \
+    ln -sfn "$(dirname "$so")" /src/training/.venv/lib/python3.12/site-packages/lightgbm/lib; \
+    ls -l /src/training/.venv/lib/python3.12/site-packages/lightgbm/lib/lib_lightgbm.so
+
+# Модульный кэш - отдельным слоем, чтобы пересборка кода не тянула зависимости.
+COPY serving/go.mod serving/go.sum /src/serving/
+RUN cd /src/serving && go mod download
+
+# Исходники + фикстуры (fixtures/model.txt, fixtures/codes.json).
+COPY serving /src/serving
+
+ENV CGO_ENABLED=1
+RUN cd /src/serving && go build -o /usr/local/bin/scorer ./cmd/scorer
+
+WORKDIR /src/serving
+EXPOSE 8080
+ENTRYPOINT ["scorer"]

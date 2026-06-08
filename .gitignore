@@ -15,3 +15,8 @@ __pycache__/
 
 # Сгенерированные эталонные артефакты (пересобрать через `make -C training data`)
 /training/testdata/
+
+# k6 нагрузочный стенд: сгенерированное (пересобрать через k6/gen-rows.sh, k6/bench.sh)
+/k6/rows.json
+/k6/threshold
+/k6/results/

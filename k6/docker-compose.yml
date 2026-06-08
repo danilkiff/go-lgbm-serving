@@ -1,0 +1,59 @@
+name: lgbm-bench
+
+# Топология нагрузочного стенда. Четыре прогона (mem/pg x без лимита/1cpu+1gb)
+# собираются из этого файла + опционального docker-compose.limit.yml, переменными
+# окружения STORE/DSN/THRESHOLD/WORKERS (их выставляет bench.sh).
+services:
+  # postgres поднимается только для pg-прогонов (профиль pg) и держит свои
+  # ресурсы: лимит 1cpu/1gb вешается лишь на scorer, чтобы pg не голодал и не
+  # зашумлял замер (docker-compose.limit.yml).
+  postgres:
+    image: postgres:16-alpine
+    profiles: ["pg"]
+    environment:
+      POSTGRES_USER: scorer
+      POSTGRES_PASSWORD: scorer
+      POSTGRES_DB: scorer
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scorer -d scorer"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  scorer:
+    build:
+      context: ..
+      dockerfile: k6/Dockerfile.scorer
+    image: lgbm-scorer:bench
+    command:
+      - -addr=:8080
+      - -model=fixtures/model.txt
+      - -codes=fixtures/codes.json
+      - -threshold=${THRESHOLD:-0}
+      - -workers=${WORKERS:-2}
+      - -store=${STORE:-mem}
+      - -explain=${EXPLAIN:-async}
+    environment:
+      # DSN читается scorer-ом как $SCORER_DSN (флаг -dsn не задаём). Для mem пуст.
+      SCORER_DSN: ${DSN:-}
+    ports:
+      - "8080:8080"
+
+  # k6 не стартует с `up` (профиль bench): bench.sh гоняет его через
+  # `compose run --rm k6 run ...` в той же сети, целясь в http://scorer:8080.
+  k6:
+    image: grafana/k6:latest
+    profiles: ["bench"]
+    environment:
+      BASE_URL: http://scorer:8080
+      STORE: ${STORE:-}
+      RATE: ${RATE:-400}
+      DURATION: ${DURATION:-60s}
+      VUS: ${VUS:-100}
+      MAX_VUS: ${MAX_VUS:-600}
+      EXPLAIN_TRIES: ${EXPLAIN_TRIES:-15}
+      PERM: ${PERM:-perm}
+    volumes:
+      - ./score-explain.js:/scripts/score-explain.js:ro
+      - ./rows.json:/scripts/rows.json:ro
+      - ./results:/results

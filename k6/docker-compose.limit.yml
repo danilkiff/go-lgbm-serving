@@ -1,0 +1,10 @@
+# Оверлей лимитов: 1 CPU / 1 GB только на scorer. Накладывается вторым -f для
+# "limited"-прогонов. Go 1.26 читает квоту cgroup -> GOMAXPROCS=1, поэтому горячий
+# пул сжимается до 1 хэндла (см. замер изоляции пулов в DESIGN).
+services:
+  scorer:
+    deploy:
+      resources:
+        limits:
+          cpus: "1"
+          memory: 1g
