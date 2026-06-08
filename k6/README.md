@@ -41,7 +41,8 @@ Env: `EXPLAIN` (async|inline), `RATE` (POST /score в секунду), `DURATION
 
 Файлы: `Dockerfile.scorer` (cgo против lib_lightgbm из колеса pip),
 `docker-compose.yml`, `docker-compose.limit.yml`, `score-explain.js`, `bench.sh`,
-`gen-rows.sh`.
+`gen-rows.sh` (вызывает `gen_rows.py`, `gen_threshold.py`), `summary.py` (сводка
+прогонов).
 
 ## Результаты
 

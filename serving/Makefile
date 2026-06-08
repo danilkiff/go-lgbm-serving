@@ -44,7 +44,7 @@ clean: ## go clean
 print-env: ## путь к нативной lib_lightgbm, с которой линкуется cgo (отладка сборки)
 	@echo "cgo links lib_lightgbm via lgbm/lgbm.go #cgo LDFLAGS (path is relative to the package dir)."
 	@echo "uv-resolved lib dir (must match that path):"
-	@cd ../training && uv run python -c "import lightgbm,pathlib;p=pathlib.Path(lightgbm.__file__).parent/'lib';print('  ', p, '(exists)' if p.exists() else '(MISSING)')"
+	@cd ../training && uv run python lgbm_lib_path.py
 
 xparity-dump: ## дамп предсказаний этой платформы в ../training/testdata/pred.<os>-<arch>.csv
 	go run ./cmd/dump ../training/testdata/model.txt ../training/testdata/holdout.csv ../training/testdata/pred.$(PLATFORM).csv
