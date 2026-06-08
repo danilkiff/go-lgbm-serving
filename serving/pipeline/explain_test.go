@@ -36,7 +36,7 @@ func TestExplainEndToEnd(t *testing.T) {
 	queue := NewChannelQueue(8)
 	store := NewMemStore()
 	const k = 3
-	scorer := NewScorer(pool, -1e18, "test-model", queue) // порог ниже любого margin -> decline
+	scorer := NewScorer(pool, -1e18, "test-model", queue, nil) // порог ниже любого margin -> decline
 	worker := NewWorker(pool, store, WorkerConfig{K: k})  // nil-каталог -> обобщённые коды
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -217,12 +217,12 @@ func TestHotPathIsolation(t *testing.T) {
 	row := make([]float64, hotPool.NumFeature())
 
 	const n = 2000
-	base := scoreP99(t, NewScorer(hotPool, 1e18, "m", nil), row, n) // одобряем всё, без нагрузки explain
+	base := scoreP99(t, NewScorer(hotPool, 1e18, "m", nil, nil), row, n) // одобряем всё, без нагрузки explain
 	shap := medianContrib(t, explainPool, row, 21)                  // стоимость SHAP на ещё свободном пуле explain
 
 	queue := NewChannelQueue(1024)
 	store := NewMemStore()
-	scorer := NewScorer(hotPool, -1e18, "m", queue) // отклоняем всё -> насыщаем объяснитель
+	scorer := NewScorer(hotPool, -1e18, "m", queue, nil) // отклоняем всё -> насыщаем объяснитель
 	w := NewWorker(explainPool, store, WorkerConfig{K: 3})
 	ctx, cancel := context.WithCancel(context.Background())
 	wait := w.Start(ctx, queue.Events(), workers)

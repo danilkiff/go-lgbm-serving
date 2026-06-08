@@ -32,7 +32,7 @@ func TestScorerDeclineEmits(t *testing.T) {
 	row := make([]float64, pool.NumFeature())
 
 	q := NewChannelQueue(8)
-	s := NewScorer(pool, -1e18, "test-model", q)
+	s := NewScorer(pool, -1e18, "test-model", q, nil)
 	res, err := s.Score(row)
 	if err != nil {
 		t.Fatalf("score: %v", err)
@@ -67,7 +67,7 @@ func TestScorerApproveNoEmit(t *testing.T) {
 	row := make([]float64, pool.NumFeature())
 
 	q := NewChannelQueue(8)
-	s := NewScorer(pool, 1e18, "test-model", q)
+	s := NewScorer(pool, 1e18, "test-model", q, nil)
 	res, err := s.Score(row)
 	if err != nil {
 		t.Fatalf("score: %v", err)
@@ -94,5 +94,38 @@ func TestChannelQueueDropsWhenFull(t *testing.T) {
 	}
 	if q.Dropped() != 1 {
 		t.Fatalf("dropped=%d, want 1", q.Dropped())
+	}
+}
+
+// TestScorerOnDropWhenQueueFull проверяет: когда очередь полна и событие
+// отброшено, Score уведомляет onDrop тем же id, что вернул клиенту, - потеря
+// объяснения видна по id, а не только в агрегате queue_dropped.
+func TestScorerOnDropWhenQueueFull(t *testing.T) {
+	pool := tdPool(t)
+	defer pool.Close()
+	row := make([]float64, pool.NumFeature())
+
+	q := NewChannelQueue(1) // буфер на одно событие, потребителя нет
+	var dropped []DeclineEvent
+	s := NewScorer(pool, -1e18, "m", q, func(e DeclineEvent) { dropped = append(dropped, e) })
+
+	// Первое отклонение занимает буфер; событие никто не вычёрпывает.
+	if _, err := s.Score(row); err != nil {
+		t.Fatalf("score 1: %v", err)
+	}
+	// Второе отклонение не влезает -> отброшено -> onDrop с его id.
+	second, err := s.Score(row)
+	if err != nil {
+		t.Fatalf("score 2: %v", err)
+	}
+
+	if len(dropped) != 1 {
+		t.Fatalf("onDrop called %d times, want 1 (first decline fit the buffer)", len(dropped))
+	}
+	if dropped[0].ID != second.ID {
+		t.Fatalf("onDrop id=%q, want dropped decline id=%q", dropped[0].ID, second.ID)
+	}
+	if q.Dropped() != 1 {
+		t.Fatalf("queue dropped=%d, want 1", q.Dropped())
 	}
 }

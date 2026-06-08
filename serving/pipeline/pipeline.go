@@ -110,6 +110,7 @@ type Scorer struct {
 	threshold float64
 	modelVer  string
 	queue     Queue
+	onDrop    func(DeclineEvent)
 	newID     func() string
 	scored    atomic.Int64
 	declined  atomic.Int64
@@ -117,13 +118,17 @@ type Scorer struct {
 
 // NewScorer собирает горячий путь. Транзакция отклоняется, когда её raw margin
 // превышает threshold. queue может быть nil - тогда отклонения ничего не
-// выкладывают.
-func NewScorer(pool *lgbm.Pool, threshold float64, modelVer string, queue Queue) *Scorer {
+// выкладывают. onDrop вызывается с событием, которое отклонение породило, но
+// очередь отвергла (буфер полон): per-событийный аналог dead-letter воркера,
+// чтобы потеря объяснения была видна по id, а не только в агрегате queue_dropped.
+// nil -> потеря лишь учитывается очередью (см. ChannelQueue.Dropped).
+func NewScorer(pool *lgbm.Pool, threshold float64, modelVer string, queue Queue, onDrop func(DeclineEvent)) *Scorer {
 	return &Scorer{
 		pool:      pool,
 		threshold: threshold,
 		modelVer:  modelVer,
 		queue:     queue,
+		onDrop:    onDrop,
 		newID:     randID,
 	}
 }
@@ -149,7 +154,12 @@ func (s *Scorer) Score(row []float64) (ScoreResult, error) {
 				Margin:   margin,
 				ModelVer: s.modelVer,
 			}
-			s.queue.Publish(event)
+			// Очередь неблокирующая: при переполнении событие отброшено. Сообщаем
+			// о потере по id, симметрично dead-letter воркера, - так объяснение
+			// отклонения не теряется без следа под насыщением.
+			if !s.queue.Publish(event) && s.onDrop != nil {
+				s.onDrop(event)
+			}
 		}
 	}
 	return res, nil

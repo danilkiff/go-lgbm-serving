@@ -66,7 +66,9 @@ func main() {
 
 	queue := pipeline.NewChannelQueue(*queueBuf)
 	store := pipeline.NewMemStore()
-	scorer := pipeline.NewScorer(hotPool, *threshold, *model, queue)
+	scorer := pipeline.NewScorer(hotPool, *threshold, *model, queue, func(e pipeline.DeclineEvent) {
+		log.Printf("score: decline id=%s dropped, explain queue full (queue_dropped=%d)", e.ID, queue.Dropped())
+	})
 	worker := pipeline.NewWorker(explainPool, store, pipeline.WorkerConfig{
 		K:       *topk,
 		Catalog: catalog,
