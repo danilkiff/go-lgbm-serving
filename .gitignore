@@ -16,9 +16,8 @@ __pycache__/
 # Сгенерированные эталонные артефакты (пересобрать через `make -C training data`)
 /training/testdata/
 
-# k6 нагрузочный стенд: сгенерированный ВХОД (пересобрать через k6/gen-rows.sh).
+# k6 нагрузочный стенд: сгенерированный ВХОД (пересобрать через `make -C k6 data`).
 # Результаты прогонов (results/run-*/, analysis.ipynb) - коммитим как артефакт.
-/k6/rows.json
-/k6/threshold
+/k6/testdata/
 /k6/.venv/
 /k6/results/.ipynb_checkpoints/

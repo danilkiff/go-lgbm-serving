@@ -1,9 +1,15 @@
 # Нагрузочное тестирование
 
-k6-нагрузка через REST по матрице 2x2 (хранилище x лимит) в двух режимах
-объяснения. Один прогон `bench.sh` = режим `EXPLAIN` и нагрузка `RATE` по четырём
-perm; сырые результаты ложатся в `results/run-<explain>-<rate>rps/`, разбор и
-графики - в `results/analysis.ipynb`.
+Что делает:
+
+- гоняет k6-нагрузку по REST через матрицу 2x2 (хранилище x лимит) в двух
+  режимах объяснения;
+- меряет латентность горячего пути `/score` и надёжность доставки объяснений
+  под нагрузкой;
+- складывает сырые результаты в `results/run-*` для разбора в ноутбуке.
+
+Один прогон = режим `EXPLAIN` и нагрузка `RATE` по четырём perm; сырьё ложится в
+`results/run-<explain>-<rate>rps/`, разбор и графики - в `results/analysis.ipynb`.
 
 |            | без лимита      | 1 CPU / 1 GB    |
 |------------|-----------------|-----------------|
@@ -28,13 +34,19 @@ perm; сырые результаты ложатся в `results/run-<explain>-<
 
 ## Команды
 
+`make help` печатает список:
+
 ```sh
-bash k6/gen-rows.sh                          # rows.json + threshold (~50% отклонений)
-EXPLAIN=async  RATE=1000 bash k6/bench.sh     # один прогон -> results/run-async-1000rps/
-EXPLAIN=inline RATE=4000 bash k6/bench.sh     # inline под стрессом
-# полная матрица:
-for e in async inline; do for r in 1000 4000; do EXPLAIN=$e RATE=$r bash k6/bench.sh; done; done
+make data      # вход k6 из training/testdata -> testdata/ (rows.json + threshold)
+make bench     # один прогон матрицы (по умолчанию async, 1000 rps)
+make matrix    # полная матрица: {async,inline} x {1000,4000} rps
+make notebook  # разбор результатов в jupyter
+make clean     # удалить сгенерированный вход (testdata/)
 ```
+
+Сперва `make -C training data` (нужны `holdout.csv`, `ref_raw.csv`), затем `make
+data` здесь. Прогон под стрессом задаётся через env: `EXPLAIN=inline RATE=4000
+make bench`.
 
 Env: `EXPLAIN` (async|inline), `RATE` (POST /score в секунду), `DURATION`, `VUS`,
 `MAX_VUS`, `WORKERS`, `EXPLAIN_TRIES`. Готовность сервисов - через healthcheck'и
@@ -42,19 +54,20 @@ compose (`up -d --wait`), без ручных опросов.
 
 ## Разбор результатов
 
-```sh
-uv run --project k6 jupyter notebook k6/results/analysis.ipynb
-```
-
-Первый `uv run` сам поднимает окружение из `k6/uv.lock` в `k6/.venv` (в ignore).
+`make notebook` (= `uv run jupyter notebook results/analysis.ipynb`); первый запуск
+сам поднимает окружение из `uv.lock` в `.venv` (в ignore).
 
 Раскладка `results/` и поля метрик - в `results/README.md`. Графики и выводы
 (inline vs async: надёжность, пропускная способность объяснений, цена латентности)
 - в самом ноутбуке.
 
-## Файлы
+## Раскладка
 
-`Dockerfile.scorer` (cgo против lib_lightgbm из колеса pip), `docker-compose.yml`,
-`docker-compose.limit.yml`, `score-explain.js` (k6-сценарий), `bench.sh`,
-`gen-rows.sh` (-> `gen_rows.py`, `gen_threshold.py`), `pyproject.toml` + `uv.lock`
-(окружение ноутбука).
+- `scripts/` - сценарий и обвязка: `score-explain.js` (k6-сценарий), `bench.sh`
+  (прогон матрицы), `gen-rows.sh` (-> `gen_rows.py`, `gen_threshold.py`, готовят
+  вход);
+- `testdata/` - сгенерированный вход (`rows.json`, `threshold`; в ignore);
+- `results/` - прогоны и ноутбук (коммитим как артефакт);
+- `Dockerfile.scorer` (cgo против lib_lightgbm из колеса pip), `docker-compose.yml`,
+  `docker-compose.limit.yml` - стенд; `pyproject.toml` + `uv.lock` - окружение
+  ноутбука.

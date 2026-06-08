@@ -5,7 +5,7 @@
 расхождение одной и той же модели, эффект, который LightGBM документирует для
 разных ОС, компиляторов и архитектур CPU (см. README, "Численный паритет").
 
-    uv run python xparity.py <a.csv> <b.csv>
+    uv run python scripts/xparity.py <a.csv> <b.csv>
 """
 
 from __future__ import annotations

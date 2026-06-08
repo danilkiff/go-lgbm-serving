@@ -22,7 +22,7 @@
 | Нативный SHAP корректен | поэлементное отклонение от Python `predict(pred_contrib=True)` | [`TestParityContrib`](../serving/lgbm/parity_test.go) |
 | SHAP внутренне согласован | инвариант sum(contrib) = raw margin | [`parity_test.go`](../serving/lgbm/parity_test.go) |
 | Код причины устойчив | порядок топ-K признаков совпадает с эталоном | [`parity_test.go`](../serving/lgbm/parity_test.go) |
-| Переносимо между платформами | дамп на каждой ОС, затем сравнение | [`cmd/dump`](../serving/cmd/dump/main.go) + [`xparity.py`](../training/xparity.py) |
+| Переносимо между платформами | дамп на каждой ОС, затем сравнение | [`cmd/dump`](../serving/cmd/dump/main.go) + [`xparity.py`](../training/scripts/xparity.py) |
 | Конкуренция корректна | 64 горутины x 500 предсказаний под `-race` против однопоточного эталона | [`TestPoolConcurrentConsistency`](../serving/lgbm/pool_test.go) |
 | Горячий путь изолирован от explain | p99 `/score` под насыщенным explain далеко ниже одного SHAP | [`TestHotPathIsolation`](../serving/pipeline/explain_test.go) |
 | Задержка / пропускная способность | оценка против contrib против пула | [`bench_test.go`](../serving/lgbm/bench_test.go) |

@@ -1,4 +1,4 @@
-"""Считает k6/threshold: медиану raw_margin из ref_raw.csv. В нагрузочном
+"""Считает k6/testdata/threshold: медиану raw_margin из ref_raw.csv. В нагрузочном
 сценарии отклонение наступает при margin > threshold, поэтому медиана даёт ~50%
 отклонений и нагружает путь explain+GET (где и видна разница mem vs pg).
 

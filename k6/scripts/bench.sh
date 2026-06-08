@@ -8,15 +8,16 @@
 # Лимит 1cpu/1gb вешается только на scorer (docker-compose.limit.yml); postgres
 # держит свои ресурсы.
 #
-#   bash k6/bench.sh                              # async, 1000rps x 30s -> run-async-1000rps
-#   EXPLAIN=inline RATE=4000 bash k6/bench.sh     # inline под стрессом -> run-inline-4000rps
+#   make -C k6 bench                              # async, 1000rps x 30s -> run-async-1000rps
+#   EXPLAIN=inline RATE=4000 make -C k6 bench     # inline под стрессом -> run-inline-4000rps
 # Полная матрица:
-#   for e in async inline; do for r in 1000 4000; do EXPLAIN=$e RATE=$r bash k6/bench.sh; done; done
+#   make -C k6 matrix
 set -euo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BASE="$HERE/docker-compose.yml"
-LIMIT="$HERE/docker-compose.limit.yml"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"   # k6/scripts
+K6="$(cd "$HERE/.." && pwd)"                            # k6
+BASE="$K6/docker-compose.yml"
+LIMIT="$K6/docker-compose.limit.yml"
 PG_DSN='postgresql://scorer:scorer@postgres:5432/scorer'
 
 export RATE="${RATE:-1000}"            # предлагаемых POST /score в секунду
@@ -26,12 +27,12 @@ export MAX_VUS="${MAX_VUS:-800}"
 export WORKERS="${WORKERS:-2}"         # воркеров explain (explain=async)
 export EXPLAIN="${EXPLAIN:-async}"     # async (вне горячего пути) | inline (на горячем пути для всех)
 export EXPLAIN_TRIES="${EXPLAIN_TRIES:-20}"
-export THRESHOLD="$(cat "$HERE/threshold" 2>/dev/null || echo 0)"
+export THRESHOLD="$(cat "$K6/testdata/threshold" 2>/dev/null || echo 0)"
 
 RUN="run-${EXPLAIN}-${RATE}rps"
-RUN_DIR="$HERE/results/$RUN"
+RUN_DIR="$K6/results/$RUN"
 
-[ -f "$HERE/rows.json" ] || { echo "нет k6/rows.json - сперва: bash k6/gen-rows.sh"; exit 1; }
+[ -f "$K6/testdata/rows.json" ] || { echo "нет k6/testdata/rows.json - сперва: make -C k6 data"; exit 1; }
 mkdir -p "$RUN_DIR"
 
 teardown() { docker compose -f "$BASE" -f "$LIMIT" --profile pg --profile bench down -v >/dev/null 2>&1 || true; }

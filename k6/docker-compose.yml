@@ -61,6 +61,6 @@ services:
       PERM: ${PERM:-perm}
       OUT: ${OUT:-/results/summary.json}
     volumes:
-      - ./score-explain.js:/scripts/score-explain.js:ro
-      - ./rows.json:/scripts/rows.json:ro
+      - ./scripts/score-explain.js:/scripts/score-explain.js:ro
+      - ./testdata/rows.json:/scripts/rows.json:ro
       - ./results:/results

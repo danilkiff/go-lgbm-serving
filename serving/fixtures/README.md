@@ -8,4 +8,4 @@
 цель Is Attack IP). Нужна, чтобы примеры `serving/clients/http/` работали
 сразу без обучения и без скачивания датасета (~9 ГБ через `make -C training data-rba`);
 - `codes.json` - индекс признака -> код причины (`NPRIOR`, `GAP`, ...), порождается
-`training/train.py` из списка `RBA_FEATURES`.
+`training/scripts/train.py` из списка `RBA_FEATURES`.

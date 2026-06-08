@@ -6,7 +6,7 @@
 # См. https://www.kaggle.com/docs/api.
 set -euo pipefail
 
-dest="$(cd "$(dirname "$0")" && pwd)/testdata"
+dest="$(cd "$(dirname "$0")/.." && pwd)/testdata"
 mkdir -p "$dest"
 
 if [ -f "$dest/rba-dataset.csv" ]; then

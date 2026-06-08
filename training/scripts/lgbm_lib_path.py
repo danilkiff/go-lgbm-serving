@@ -2,7 +2,7 @@
 ли он. Путь обязан совпадать с тем, по которому cgo линкует lib_lightgbm
 (директива #cgo LDFLAGS в serving/lgbm/lgbm.go) - отладка сборки.
 
-    uv run python lgbm_lib_path.py
+    uv run python scripts/lgbm_lib_path.py
 """
 
 from __future__ import annotations
