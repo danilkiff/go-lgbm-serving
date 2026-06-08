@@ -1,37 +1,31 @@
-### go-lgbm-serving - scorer HTTP API (примеры для JetBrains HTTP Client)
+### go-lgbm-serving - scorer HTTP API (JetBrains HTTP Client)
 #
-# Сервис конвейера decline->explain. Эндпойнты: POST /score, GET /explain/{id},
-# GET /metrics. Переменная {{host}} берётся из http-client.env.json: выбрать
-# окружение "local" в выпадающем списке вверху редактора.
+# Конвейер decline->explain. Эндпойнты: POST /score, GET /explain/{id}, GET /metrics.
+# {{host}} - из http-client.env.json (окружение "local" вверху редактора).
 #
-# Запуск сервиса (порт по умолчанию :8080) на закоммиченной фикстуре RBA-модели,
-# обучение/скачивание не нужны (флаги явные; -codes опционален, иначе коды R<idx>):
-#   go -C serving run ./cmd/scorer -model fixtures/model.txt -codes fixtures/codes.json
-# то же короче:
-#   make -C serving run
+# Запуск на закоммиченной фикстуре, обучение не нужно:
+#   make -C serving run    # коды R<idx>; для читаемых добавь -codes fixtures/codes.json
 #
-# Запрос на /score - плотный массив "features" из ровно 12 чисел в этом порядке
-# (имена из model.txt feature_names):
-#    0 rtt_ms            round-trip time входа, мс
+# /score: "features" - ровно 12 чисел в порядке feature_names из model.txt:
+#    0 rtt_ms            RTT входа, мс
 #    1 login_successful  вход успешен (0/1)
 #    2 hour              час суток (0-23)
 #    3 dow               день недели (0-6)
-#    4 n_prior_logins    число прошлых входов пользователя
-#    5 secs_since_last   секунд с прошлого входа (-1 если первый)
-#    6 is_new_country    новая страна для пользователя (0/1)
+#    4 n_prior_logins    прошлых входов пользователя
+#    5 secs_since_last   секунд с прошлого входа (-1 у первого)
+#    6 is_new_country    новая страна (0/1)
 #    7 is_new_city       новый город (0/1)
 #    8 is_new_asn        новый ASN (0/1)
 #    9 is_new_os         новая ОС (0/1)
 #   10 is_new_browser    новый браузер (0/1)
-#   11 is_new_device     новый тип устройства (0/1)
+#   11 is_new_device     новое устройство (0/1)
 #
-# Решение: decline при margin > threshold (по умолчанию 0), иначе approve.
-# Объяснение (SHAP) считается асинхронно вне горячего пути, поэтому /explain
-# доступен только для отклонённых транзакций и лишь спустя мгновение после /score.
+# decline при margin > threshold (0 по умолчанию), иначе approve. SHAP считается
+# асинхронно вне горячего пути: /explain доступен только для отклонений и спустя
+# мгновение после /score.
 
 ### POST /score - отклонение (margin > 0)
-# Успешный вход, ничего "нового", но 1188 прошлых входов в 3 ночи -> margin 2.70.
-# Ответ кладёт id отклонения в глобальную переменную для следующего /explain.
+# Успех, ничего нового, но 1188 входов в 3 ночи -> margin 2.70, decline.
 # @name score_decline
 POST {{host}}/score
 Content-Type: application/json
@@ -51,10 +45,8 @@ Content-Type: application/json
     client.log("decline id=" + response.body.id + " margin=" + response.body.margin);
 %}
 
-### GET /explain/{id} - коды причин последнего отклонения
-# Требует, чтобы выше отработал score_decline (переменная declineId).
-# Объяснение асинхронное: если сразу 404, повторить запрос через мгновение -
-# id уже выдан, объяснение вот-вот будет сохранено воркером.
+### GET /explain/{id} - коды причин последнего отклонения (нужен score_decline выше)
+# Асинхронно: при 404 сразу - повторить через мгновение, воркер вот-вот сохранит.
 GET {{host}}/explain/{{declineId}}
 Accept: application/json
 
@@ -71,7 +63,7 @@ Accept: application/json
 %}
 
 ### POST /score - одобрение (margin <= 0)
-# Вернувшийся пользователь, ничего нового -> margin сильно отрицательная.
+# Вернувшийся пользователь, ничего нового -> margin отрицательная, approve.
 # @name score_approve
 POST {{host}}/score
 Content-Type: application/json
@@ -90,8 +82,7 @@ Content-Type: application/json
     client.global.set("approveId", response.body.id);
 %}
 
-### GET /explain/{id} - 404 для одобренной транзакции
-# Одобрения не объясняются, поэтому id из score_approve всегда даёт 404.
+### GET /explain/{id} - 404 для одобрения (одобрения не объясняются)
 GET {{host}}/explain/{{approveId}}
 Accept: application/json
 
@@ -111,8 +102,7 @@ Accept: application/json
     });
 %}
 
-### GET /metrics - операционный снимок
-# Счётчики горячего пути, глубина очереди explain и прогресс объяснителя.
+### GET /metrics - счётчики горячего пути, очередь explain, прогресс воркера
 GET {{host}}/metrics
 Accept: application/json
 

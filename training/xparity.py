@@ -1,6 +1,6 @@
 """Сравнивает два кросс-платформенных дампа предсказаний (из cmd/dump) и сообщает расхождение.
 
-Оба файла должны идти от одних model.txt и holdout.csv, посчитанных подачей Go на
+Оба файла должны идти от одних model.txt и holdout.csv, посчитанных инференсом Go на
 разных платформах. Любое ненулевое различие - кросс-платформенное численное
 расхождение одной и той же модели, эффект, который LightGBM документирует для
 разных ОС, компиляторов и архитектур CPU (см. README, "Численный паритет").
@@ -17,7 +17,7 @@ import numpy as np
 
 def load(path: str):
     a = np.loadtxt(path, delimiter=",", skiprows=1)
-    return a[:, 0], a[:, 1:]  # сырая маржа, вклады (признаки... + база)
+    return a[:, 0], a[:, 1:]  # raw margin, contributions (признаки... + base value)
 
 
 def main() -> None:
@@ -29,7 +29,7 @@ def main() -> None:
         raise SystemExit("shape mismatch between the two dumps")
 
     n = len(ra)
-    nfeat = ca.shape[1] - 1  # последний столбец вкладов - базовое (ожидаемое) значение
+    nfeat = ca.shape[1] - 1  # последний столбец contributions - base value
     raw_d = np.abs(ra - rb)
     flips = int(np.sum((ra > 0) != (rb > 0)))
     c_d = np.abs(ca - cb)

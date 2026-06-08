@@ -1,7 +1,7 @@
 [project]
 name = "lgbm-poc-train"
 version = "0.1.0"
-description = "Обучение модели LightGBM (домен RBA / сессионный фрод) и выгрузка артефактов для PoC паритета и подачи на Go"
+description = "Обучение модели LightGBM (домен RBA / сессионный фрод) и выгрузка артефактов для PoC паритета и инференса на Go"
 requires-python = ">=3.12,<3.14"
 dependencies = [
     "lightgbm>=4.0,<5",

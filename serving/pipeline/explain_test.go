@@ -26,8 +26,8 @@ func TestMemStore(t *testing.T) {
 // TestExplainEndToEnd собирает весь путь decline->explain: отклонение на горячем
 // пути выкладывает событие, воркер считает нативный SHAP вне пути и сохраняет
 // объяснение, а мы проверяем сквозные инварианты - sum(contrib) примерно равно
-// поданной марже, и сохранённые коды причин равны топ-K заново посчитанных
-// вкладов. (TestParityContrib уже доказывает, что эти топ-K совпадают с эталоном
+// margin решения, и сохранённые коды причин равны топ-K заново посчитанных
+// contributions. (TestParityContrib уже доказывает, что эти топ-K совпадают с эталоном
 // Python, так что сохранённые коды совпадают с ним транзитивно.)
 func TestExplainEndToEnd(t *testing.T) {
 	pool := tdPool(t)
@@ -36,7 +36,7 @@ func TestExplainEndToEnd(t *testing.T) {
 	queue := NewChannelQueue(8)
 	store := NewMemStore()
 	const k = 3
-	scorer := NewScorer(pool, -1e18, "test-model", queue) // порог ниже любой маржи -> decline
+	scorer := NewScorer(pool, -1e18, "test-model", queue) // порог ниже любого margin -> decline
 	worker := NewWorker(pool, store, WorkerConfig{K: k})  // nil-каталог -> обобщённые коды
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -65,7 +65,7 @@ func TestExplainEndToEnd(t *testing.T) {
 		t.Fatal("explanation never appeared in store")
 	}
 
-	// Независимо пересчитать вклады и проверить инварианты.
+	// Независимо пересчитать contributions и проверить инварианты.
 	contrib, err := pool.PredictContrib(row)
 	if err != nil {
 		t.Fatalf("contrib: %v", err)
@@ -199,7 +199,7 @@ func medianContrib(t *testing.T, p *lgbm.Pool, row []float64, n int) time.Durati
 }
 
 // TestHotPathIsolation - ключевое свойство: насыщенная очередь explain (нативный
-// SHAP примерно в 40 раз дороже скоринга) не должна попадать на путь /score.
+// SHAP примерно в 58 раз дороже скоринга) не должна попадать на путь /score.
 // Меряет p99 /score вхолостую против полной нагрузки explain и проверяет, что он
 // остаётся сильно ниже стоимости одного SHAP - то есть SHAP не на горячем пути.
 func TestHotPathIsolation(t *testing.T) {

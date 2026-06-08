@@ -76,7 +76,7 @@ func BenchmarkPredictContrib(b *testing.B) {
 }
 
 // BenchmarkPoolRawParallel меряет пропускную способность, когда GOMAXPROCS
-// горутин берут хэндлы из пула - форма боевой подачи.
+// горутин берут хэндлы из пула - форма боевого инференса.
 func BenchmarkPoolRawParallel(b *testing.B) {
 	if _, err := os.Stat(tdPath("model.txt")); err != nil {
 		b.Skip("no testdata - run `make -C training data` first")

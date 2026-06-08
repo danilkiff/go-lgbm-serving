@@ -12,7 +12,7 @@
 
 - `model.txt`;
 - `holdout.csv`;
-- `ref_raw.csv` (эталонная маржа);
+- `ref_raw.csv` (эталонный raw margin);
 - `ref_contrib.csv` (эталонный SHAP);
 - `meta.json` (версия LightGBM, формы);
 - `codes.json` (индекс признака -> код причины).

@@ -1,6 +1,6 @@
 // Команда scorer - сервис decline->explain. POST /score возвращает решение из
 // пула Booster LightGBM и для отклонений выкладывает DeclineEvent вне горячего
-// пути; шаг SHAP (примерно в 40 раз дороже скоринга) никогда не идёт инлайн.
+// пути; шаг SHAP (примерно в 58 раз дороже скоринга) никогда не идёт инлайн.
 // Воркеры explain считают SHAP асинхронно, GET /explain/{id} отдаёт результат,
 // GET /metrics - операционный снимок.
 //
@@ -64,9 +64,8 @@ func main() {
 		},
 	})
 
-	// Воркеры explain делят пул Booster с горячим путём; стоимость SHAP (примерно
-	// в 40 раз дороже скоринга) не попадает на /score, потому что считается здесь,
-	// асинхронно.
+	// Воркеры explain делят пул Booster с горячим путём; стоимость SHAP считается
+	// здесь, асинхронно, и на /score не попадает.
 	workerCtx, cancelWorkers := context.WithCancel(context.Background())
 	defer cancelWorkers()
 	waitWorkers := worker.Start(workerCtx, queue.Events(), *workers)

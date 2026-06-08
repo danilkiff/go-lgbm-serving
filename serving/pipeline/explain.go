@@ -9,9 +9,9 @@ import (
 	"github.com/danilkiff/go-lgbm-serving/reasoncode"
 )
 
-// ReasonCode - один ранжированный вклад в решение: признак, его код/метка
+// ReasonCode - один ранжированный contribution в решение: признак, его код/метка
 // adverse-action (через reasoncode.Catalog), толкнул ли он к отклонению или от
-// него, и знаковый вклад SHAP.
+// него, и знаковый SHAP contribution.
 type ReasonCode struct {
 	Feature      int     `json:"feature"`
 	Code         string  `json:"code"`
@@ -21,7 +21,7 @@ type ReasonCode struct {
 }
 
 // Explanation - артефакт вне пути для отклонённой транзакции: топ-K кодов причин
-// плюс значения, по которым его можно сверить с поданным решением (Margin) и
+// плюс значения, по которым его можно сверить с принятым решением (Margin) и
 // моделью, его принявшей (ModelVer).
 type Explanation struct {
 	ID       string       `json:"id"`
@@ -79,7 +79,7 @@ type WorkerConfig struct {
 
 // Worker вычёрпывает DeclineEvent вне горячего пути, считает нативный SHAP для
 // каждого через пул Booster, ранжирует топ-K кодов причин и сохраняет результат.
-// Здесь и живёт стоимость SHAP (примерно в 40 раз дороже скоринга) - никогда на
+// Здесь и живёт стоимость SHAP (примерно в 58 раз дороже скоринга) - никогда на
 // пути /score. Worker безопасно запускать пулом горутин (см. Start).
 type Worker struct {
 	pool      *lgbm.Pool
@@ -153,14 +153,14 @@ func (w *Worker) Explained() int64 { return atomic.LoadInt64(&w.explained) }
 func (w *Worker) Dropped() int64 { return atomic.LoadInt64(&w.dropped) }
 
 // explain считает ранжированные коды причин для одного события отклонения.
-// Вклады берутся из того же нативного предиктора, что дал поданную маржу, поэтому
+// Contributions берутся из того же нативного предиктора, что дал сам margin, поэтому
 // инвариант sum(contrib) == margin связывает объяснение с решением.
 func (w *Worker) explain(e DeclineEvent) (Explanation, error) {
 	contrib, err := w.pool.PredictContrib(e.Row)
 	if err != nil {
 		return Explanation{}, err
 	}
-	nf := len(contrib) - 1 // последний элемент - базовое (ожидаемое) значение
+	nf := len(contrib) - 1 // последний элемент - base value
 	top := reasoncode.TopK(contrib[:nf], w.cfg.K)
 	reasons := make([]ReasonCode, len(top))
 	for i, idx := range top {

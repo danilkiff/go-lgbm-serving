@@ -110,7 +110,7 @@ func TestParityRaw(t *testing.T) {
 		if d > maxDiff {
 			maxDiff = d
 		}
-		// Решение - знак сырой маржи; flip - это изменившееся решение.
+		// Решение - знак raw margin; flip - это изменившееся решение.
 		if (got > 0) != (want > 0) {
 			flips++
 		}
@@ -158,12 +158,12 @@ func TestParityContrib(t *testing.T) {
 			}
 			sum += got[j]
 		}
-		// 2. внутренний инвариант: sum(contrib) == сырая маржа
+		// 2. внутренний инвариант: sum(contrib) == raw margin
 		if d := math.Abs(sum - raw[i][0]); d > maxSumDiff {
 			maxSumDiff = d
 		}
-		// 3. устойчивость кодов причин: топ-K признаков по |вкладу| (без базового
-		//    члена) должны совпадать с эталоном Python.
+		// 3. устойчивость кодов причин: топ-K признаков по |contribution| (без base
+		//    value) должны совпадать с эталоном Python.
 		if !equalInts(reasoncode.TopK(got[:m.NFeatures], topK), reasoncode.TopK(ref[i][:m.NFeatures], topK)) {
 			topMismatch++
 		}

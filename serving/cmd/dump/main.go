@@ -1,5 +1,5 @@
-// Команда dump прогоняет holdout через Go/cgo-предиктор LightGBM и пишет сырую
-// маржу и вклады SHAP в CSV, по строке на каждый вход.
+// Команда dump прогоняет holdout через Go/cgo-предиктор LightGBM и пишет raw
+// margin и SHAP contributions в CSV, по строке на каждый вход.
 //
 // Запустите на двух платформах с ОДНИМИ model.txt и holdout.csv, затем сравните
 // выводы: любое различие - кросс-платформенное численное расхождение одной и той
@@ -48,7 +48,7 @@ func main() {
 	fmt.Printf("wrote %s: %d rows, %d features\n", outPath, len(rows), b.NumFeature())
 }
 
-// writeDump скорит каждую строку (сырая маржа + вклады SHAP) и пишет CSV:
+// writeDump скорит каждую строку (raw margin + SHAP contributions) и пишет CSV:
 // заголовок "raw,c0..cN", затем по строке на вход. Вынесено из main, чтобы было
 // тестируемо без запуска процесса.
 func writeDump(b *lgbm.Booster, rows [][]float64, out io.Writer) error {

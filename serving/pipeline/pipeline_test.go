@@ -23,8 +23,8 @@ func tdPoolN(t *testing.T, n int) *lgbm.Pool {
 	return p
 }
 
-// TestScorerDeclineEmits форсирует отклонение (порог ниже любой маржи) и
-// проверяет, что горячий путь выкладывает DeclineEvent с id решения, маржой,
+// TestScorerDeclineEmits форсирует отклонение (порог ниже любого margin) и
+// проверяет, что горячий путь выкладывает DeclineEvent с id решения, margin,
 // версией модели и копией строки.
 func TestScorerDeclineEmits(t *testing.T) {
 	pool := tdPool(t)
@@ -59,7 +59,7 @@ func TestScorerDeclineEmits(t *testing.T) {
 	}
 }
 
-// TestScorerApproveNoEmit форсирует одобрение (порог выше любой маржи) и
+// TestScorerApproveNoEmit форсирует одобрение (порог выше любого margin) и
 // проверяет, что событие не выкладывается.
 func TestScorerApproveNoEmit(t *testing.T) {
 	pool := tdPool(t)

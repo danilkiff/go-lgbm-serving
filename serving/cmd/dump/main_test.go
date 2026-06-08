@@ -36,7 +36,7 @@ func TestLoadCSV(t *testing.T) {
 }
 
 // TestWriteDump прогоняет сериализацию дампа на настоящей модели и проверяет
-// ключевой инвариант: записанная сырая маржа равна сумме записанных вкладов SHAP,
+// ключевой инвариант: записанный raw margin равен сумме записанных SHAP contributions,
 // построчно.
 func TestWriteDump(t *testing.T) {
 	model := filepath.Join("..", "..", "..", "training", "testdata", "model.txt")
@@ -55,7 +55,7 @@ func TestWriteDump(t *testing.T) {
 		t.Fatalf("holdout: %v", err)
 	}
 	if len(rows) > 100 {
-		rows = rows[:100] // тест должен быть быстрым; SHAP примерно в 40 раз дороже скоринга
+		rows = rows[:100] // тест должен быть быстрым; SHAP примерно в 58 раз дороже скоринга
 	}
 
 	var buf bytes.Buffer

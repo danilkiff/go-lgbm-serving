@@ -38,9 +38,9 @@ func (c *Catalog) Lookup(feature int) Code {
 	return Code{Code: fmt.Sprintf("R%d", feature), Label: fmt.Sprintf("feature %d", feature)}
 }
 
-// Direction сообщает, толкнул ли вклад оценку в сторону неблагоприятного решения.
-// В этой схеме подачи большая сырая маржа означает больший риск, поэтому
-// неотрицательный вклад риск увеличил.
+// Direction сообщает, толкнул ли contribution оценку в сторону неблагоприятного решения.
+// В этой схеме большой raw margin означает больший риск, поэтому
+// неотрицательный contribution риск увеличил.
 func Direction(contribution float64) string {
 	if contribution >= 0 {
 		return "increased risk"

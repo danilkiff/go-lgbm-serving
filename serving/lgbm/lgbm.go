@@ -1,7 +1,7 @@
 // Пакет lgbm - тонкая cgo-обёртка над C API LightGBM для инференса модели,
-// обученной в Python. Отдаёт сырую маржу (raw margin) и нативные вклады SHAP
-// (C_API_PREDICT_CONTRIB). В этом и смысл: коды причин берутся из того же
-// нативного предиктора, а не из повторной реализации.
+// обученной в Python. Отдаёт raw margin и нативные SHAP contributions
+// (C_API_PREDICT_CONTRIB): коды причин - из того же нативного предиктора, а не из
+// повторной реализации.
 //
 // Прототипы C-ABI объявлены вручную, без #include <LightGBM/c_api.h>: этот
 // заголовок тянет C++/Arrow, которые преамбула cgo не компилирует. C API -
@@ -46,7 +46,7 @@ import (
 // Константы C API (из c_api.h; стабильны в пределах 4.x).
 const (
 	cDtypeFloat64   = 1
-	cPredictRaw     = 1 // C_API_PREDICT_RAW_SCORE - маржа до сигмоиды
+	cPredictRaw     = 1 // C_API_PREDICT_RAW_SCORE - raw margin до сигмоиды
 	cPredictContrib = 3 // C_API_PREDICT_CONTRIB - значения SHAP
 )
 
@@ -60,7 +60,7 @@ var cPredictParam = C.CString("num_threads=1")
 // Booster - загруженная модель LightGBM.
 //
 // Небезопасен для конкурентных вызовов Predict* на одном значении. Для
-// параллельной подачи используйте Pool.
+// параллельного инференса используйте Pool.
 type Booster struct {
 	handle     C.BoosterHandle
 	nFeature   int
@@ -150,7 +150,7 @@ func (b *Booster) predictInto(row []float64, predictType, outLen int) ([]float64
 	return out[:int(written)], nil
 }
 
-// PredictRaw возвращает сырую маржу (до сигмоиды) для одной строки - прямой
+// PredictRaw возвращает raw margin (до сигмоиды) для одной строки - прямой
 // аналог Python predict(raw_score=True).
 func (b *Booster) PredictRaw(row []float64) (float64, error) {
 	out, err := b.predictInto(row, cPredictRaw, b.rawLen)
@@ -160,9 +160,9 @@ func (b *Booster) PredictRaw(row []float64) (float64, error) {
 	return out[0], nil
 }
 
-// PredictContrib возвращает нативные вклады SHAP для одной строки, длина
-// NumFeature()+1. Последний элемент - базовое (ожидаемое) значение; сумма всех
-// элементов равна сырой марже (инвариант согласованности, который мы проверяем).
+// PredictContrib возвращает нативные SHAP contributions для одной строки, длина
+// NumFeature()+1. Последний элемент - base value; сумма всех элементов равна raw
+// margin (инвариант согласованности, который мы проверяем).
 func (b *Booster) PredictContrib(row []float64) ([]float64, error) {
 	return b.predictInto(row, cPredictContrib, b.contribLen)
 }
