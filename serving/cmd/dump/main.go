@@ -93,6 +93,9 @@ func loadCSV(path string) ([][]float64, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(recs) < 1 {
+		return nil, nil // пустой файл: нет заголовка - нет строк
+	}
 	out := make([][]float64, 0, len(recs)-1)
 	for _, rec := range recs[1:] { // пропустить заголовок
 		row := make([]float64, len(rec))

@@ -42,11 +42,11 @@ func TestPoolConcurrentConsistency(t *testing.T) {
 	)
 	var mismatches, calls int64
 	var wg sync.WaitGroup
-	for w := 0; w < workers; w++ {
+	for w := range workers {
 		wg.Add(1)
 		go func(seed int) {
 			defer wg.Done()
-			for it := 0; it < iters; it++ {
+			for it := range iters {
 				i := (seed*7 + it*13) % len(X)
 				got, err := pool.PredictRaw(X[i])
 				atomic.AddInt64(&calls, 1)

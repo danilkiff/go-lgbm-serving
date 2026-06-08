@@ -19,7 +19,7 @@ func NewPool(path string, size int) (*Pool, error) {
 		return nil, fmt.Errorf("lgbm: pool size must be >= 1, got %d", size)
 	}
 	p := &Pool{handles: make(chan *Booster, size), all: make([]*Booster, 0, size)}
-	for i := 0; i < size; i++ {
+	for i := range size {
 		b, err := LoadBooster(path)
 		if err != nil {
 			p.Close()

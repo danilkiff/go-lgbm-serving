@@ -8,6 +8,7 @@ package pipeline
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"slices"
 	"sync/atomic"
 
 	"github.com/danilkiff/go-lgbm-serving/lgbm"
@@ -55,7 +56,7 @@ type Queue interface {
 // отсутствующий потребитель не добавит задержки горячему пути.
 type ChannelQueue struct {
 	ch      chan DeclineEvent
-	dropped int64
+	dropped atomic.Int64
 }
 
 // NewChannelQueue возвращает ChannelQueue с буфером на buffer событий.
@@ -72,7 +73,7 @@ func (q *ChannelQueue) Publish(e DeclineEvent) bool {
 	case q.ch <- e:
 		return true
 	default:
-		atomic.AddInt64(&q.dropped, 1)
+		q.dropped.Add(1)
 		return false
 	}
 }
@@ -81,7 +82,7 @@ func (q *ChannelQueue) Publish(e DeclineEvent) bool {
 func (q *ChannelQueue) Events() <-chan DeclineEvent { return q.ch }
 
 // Dropped сообщает, сколько событий отброшено из-за полной очереди.
-func (q *ChannelQueue) Dropped() int64 { return atomic.LoadInt64(&q.dropped) }
+func (q *ChannelQueue) Dropped() int64 { return q.dropped.Load() }
 
 // Len - число событий в буфере прямо сейчас (глубина очереди).
 func (q *ChannelQueue) Len() int { return len(q.ch) }
@@ -110,8 +111,8 @@ type Scorer struct {
 	modelVer  string
 	queue     Queue
 	newID     func() string
-	scored    int64
-	declined  int64
+	scored    atomic.Int64
+	declined  atomic.Int64
 }
 
 // NewScorer собирает горячий путь. Транзакция отклоняется, когда её raw margin
@@ -134,16 +135,21 @@ func (s *Scorer) Score(row []float64) (ScoreResult, error) {
 	if err != nil {
 		return ScoreResult{}, err
 	}
-	atomic.AddInt64(&s.scored, 1)
+	s.scored.Add(1)
 	res := ScoreResult{ID: s.newID(), Margin: margin, Decision: Approve}
 	if margin > s.threshold {
 		res.Decision = Decline
-		atomic.AddInt64(&s.declined, 1)
+		s.declined.Add(1)
 		if s.queue != nil {
 			// Копируем строку: вызывающий может переиспользовать срез, а событие
 			// живёт дольше этого вызова.
-			row2 := append([]float64(nil), row...)
-			s.queue.Publish(DeclineEvent{ID: res.ID, Row: row2, Margin: margin, ModelVer: s.modelVer})
+			event := DeclineEvent{
+				ID:       res.ID,
+				Row:      slices.Clone(row),
+				Margin:   margin,
+				ModelVer: s.modelVer,
+			}
+			s.queue.Publish(event)
 		}
 	}
 	return res, nil
@@ -151,7 +157,7 @@ func (s *Scorer) Score(row []float64) (ScoreResult, error) {
 
 // Counts возвращает, сколько транзакций сосчитано и сколько отклонено.
 func (s *Scorer) Counts() (scored, declined int64) {
-	return atomic.LoadInt64(&s.scored), atomic.LoadInt64(&s.declined)
+	return s.scored.Load(), s.declined.Load()
 }
 
 func randID() string {

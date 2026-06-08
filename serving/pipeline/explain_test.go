@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
-	"sort"
+	"slices"
 	"testing"
 	"time"
 
@@ -55,7 +55,7 @@ func TestExplainEndToEnd(t *testing.T) {
 
 	var exp Explanation
 	var ok bool
-	for i := 0; i < 200; i++ { // согласованность в конечном счёте: опрос до ~1с
+	for range 200 { // согласованность в конечном счёте: опрос до ~1с
 		if exp, ok = store.Get(res.ID); ok {
 			break
 		}
@@ -149,13 +149,13 @@ func TestWorkerPoolProcessesAll(t *testing.T) {
 	defer func() { cancel(); wait(); pool.Close() }()
 
 	const m = 20
-	for i := 0; i < m; i++ {
+	for i := range m {
 		queue.Publish(DeclineEvent{ID: fmt.Sprintf("e%d", i), Row: row, Margin: -1})
 	}
 
 	stored := func() int {
 		n := 0
-		for i := 0; i < m; i++ {
+		for i := range m {
 			if _, ok := store.Get(fmt.Sprintf("e%d", i)); ok {
 				n++
 			}
@@ -180,7 +180,7 @@ func scoreP99(t *testing.T, s *Scorer, row []float64, n int) time.Duration {
 		}
 		d[i] = time.Since(start)
 	}
-	sort.Slice(d, func(i, j int) bool { return d[i] < d[j] })
+	slices.Sort(d)
 	return d[int(float64(n)*0.99)]
 }
 
@@ -194,7 +194,7 @@ func medianContrib(t *testing.T, p *lgbm.Pool, row []float64, n int) time.Durati
 		}
 		d[i] = time.Since(start)
 	}
-	sort.Slice(d, func(i, j int) bool { return d[i] < d[j] })
+	slices.Sort(d)
 	return d[n/2]
 }
 
@@ -246,14 +246,14 @@ func TestWorkerDrainOnQueueClose(t *testing.T) {
 	wait := w.Start(context.Background(), queue.Events(), 4)
 
 	const m = 30
-	for i := 0; i < m; i++ {
+	for i := range m {
 		queue.Publish(DeclineEvent{ID: fmt.Sprintf("d%d", i), Row: row, Margin: -1})
 	}
 	queue.Close() // мягко: дочистить очередь, затем воркеры выходят
 	wait()        // возвращается только после выхода каждого воркера
 	pool.Close()
 
-	for i := 0; i < m; i++ {
+	for i := range m {
 		if _, ok := store.Get(fmt.Sprintf("d%d", i)); !ok {
 			t.Errorf("event d%d was not drained before shutdown", i)
 		}

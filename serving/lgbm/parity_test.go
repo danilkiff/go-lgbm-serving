@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"testing"
 
@@ -53,30 +54,40 @@ func loadMeta(t *testing.T) meta {
 	return m
 }
 
-// loadCSV читает числовой CSV с заголовком в строки float64.
-func loadCSV(t *testing.T, name string) [][]float64 {
-	t.Helper()
-	f, err := os.Open(tdPath(name))
+// readMatrix читает числовой CSV с заголовком в строки float64. Без *testing.T -
+// годится и для бенчмарков; loadCSV - обёртка для тестов.
+func readMatrix(path string) ([][]float64, error) {
+	f, err := os.Open(path)
 	if err != nil {
-		t.Fatalf("open %s: %v", name, err)
+		return nil, err
 	}
 	defer f.Close()
-	r := csv.NewReader(f)
-	recs, err := r.ReadAll()
+	recs, err := csv.NewReader(f).ReadAll()
 	if err != nil {
-		t.Fatalf("read %s: %v", name, err)
+		return nil, err
+	}
+	if len(recs) < 1 {
+		return nil, nil // пустой файл: нет заголовка - нет строк
 	}
 	out := make([][]float64, 0, len(recs)-1)
 	for _, rec := range recs[1:] { // пропустить заголовок
 		row := make([]float64, len(rec))
 		for j, s := range rec {
-			v, err := strconv.ParseFloat(s, 64)
-			if err != nil {
-				t.Fatalf("%s: parse %q: %v", name, s, err)
+			if row[j], err = strconv.ParseFloat(s, 64); err != nil {
+				return nil, err
 			}
-			row[j] = v
 		}
 		out = append(out, row)
+	}
+	return out, nil
+}
+
+// loadCSV - обёртка readMatrix для тестов: проваливает тест при ошибке.
+func loadCSV(t *testing.T, name string) [][]float64 {
+	t.Helper()
+	out, err := readMatrix(tdPath(name))
+	if err != nil {
+		t.Fatalf("load %s: %v", name, err)
 	}
 	return out
 }
@@ -164,7 +175,10 @@ func TestParityContrib(t *testing.T) {
 		}
 		// 3. устойчивость кодов причин: топ-K признаков по |contribution| (без base
 		//    value) должны совпадать с эталоном Python.
-		if !equalInts(reasoncode.TopK(got[:m.NFeatures], topK), reasoncode.TopK(ref[i][:m.NFeatures], topK)) {
+		if !slices.Equal(
+			reasoncode.TopK(got[:m.NFeatures], topK),
+			reasoncode.TopK(ref[i][:m.NFeatures], topK),
+		) {
 			topMismatch++
 		}
 	}
@@ -179,17 +193,4 @@ func TestParityContrib(t *testing.T) {
 	if topMismatch != 0 {
 		t.Fatalf("reason-code ordering mismatches: %d (must be 0 at same-build parity)", topMismatch)
 	}
-}
-
-// equalInts сообщает, равны ли два среза индексов поэлементно.
-func equalInts(a, b []int) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }

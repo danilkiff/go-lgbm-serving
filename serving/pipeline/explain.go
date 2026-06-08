@@ -85,8 +85,8 @@ type Worker struct {
 	pool      *lgbm.Pool
 	store     Store
 	cfg       WorkerConfig
-	explained int64
-	dropped   int64
+	explained atomic.Int64
+	dropped   atomic.Int64
 }
 
 // NewWorker возвращает воркер explain.
@@ -136,21 +136,21 @@ func (w *Worker) process(e DeclineEvent) {
 		var exp Explanation
 		if exp, err = w.explain(e); err == nil {
 			w.store.Put(exp)
-			atomic.AddInt64(&w.explained, 1)
+			w.explained.Add(1)
 			return
 		}
 	}
-	atomic.AddInt64(&w.dropped, 1)
+	w.dropped.Add(1)
 	if w.cfg.DeadLetter != nil {
 		w.cfg.DeadLetter(e, err)
 	}
 }
 
 // Explained сообщает, сколько объяснений посчитано и сохранено.
-func (w *Worker) Explained() int64 { return atomic.LoadInt64(&w.explained) }
+func (w *Worker) Explained() int64 { return w.explained.Load() }
 
 // Dropped сообщает, сколько событий провалили все попытки (и ушли в dead-letter).
-func (w *Worker) Dropped() int64 { return atomic.LoadInt64(&w.dropped) }
+func (w *Worker) Dropped() int64 { return w.dropped.Load() }
 
 // explain считает ранжированные коды причин для одного события отклонения.
 // Contributions берутся из того же нативного предиктора, что дал сам margin, поэтому
