@@ -78,36 +78,18 @@ export default function () {
 }
 
 export function handleSummary(data) {
+  // Сырой дамп k6 data в OUT: и стандартные, и кастомные метрики (score_latency,
+  // explain_*) с перцентилями из summaryTrendStats, включая p99 (флаг
+  // --summary-export p99 не отдаёт). Разбор и форматирование - в ноутбуке
+  // results/analysis.ipynb. Серверные счётчики (queue_dropped, explained)
+  // снимает bench.sh из GET /metrics в отдельный <perm>.server.json.
+  const out = __ENV.OUT || '/results/summary.json';
   const m = data.metrics;
-  const v = (name, key) => (m[name] && m[name].values[key] !== undefined ? m[name].values[key] : null);
-  const r2 = (x) => (x === null ? null : Math.round(x * 100) / 100);
-  const trend = (name) => ({ avg: r2(v(name, 'avg')), p95: r2(v(name, 'p(95)')), p99: r2(v(name, 'p(99)')), max: r2(v(name, 'max')) });
-
-  const summary = {
-    perm: PERM,
-    store: __ENV.STORE || null,
-    config: { rate: Number(__ENV.RATE || 400), duration: __ENV.DURATION || '60s' },
-    score_ms: trend('score_latency'),
-    explain_get_ms: trend('explain_latency'),
-    explain_wait_ms: trend('explain_wait'),
-    explain_found_rate: r2(v('explain_found', 'rate')),
-    explain_poll_misses: v('explain_poll_misses', 'count'),
-    http_reqs: v('http_reqs', 'count'),
-    http_req_rate: r2(v('http_reqs', 'rate')),
-    http_req_failed_rate: v('http_req_failed', 'rate'),
-    iterations: v('iterations', 'count'),
-    vus_max: v('vus_max', 'value'),
+  const found = m.explain_found ? m.explain_found.values.rate.toFixed(3) : '-';
+  const sp99 = m.score_latency ? m.score_latency.values['p(99)'].toFixed(2) : '-';
+  const reqs = m.http_reqs ? m.http_reqs.values.count : '?';
+  return {
+    stdout: `${PERM}: http_reqs=${reqs} found=${found} score_p99=${sp99}ms\n`,
+    [out]: JSON.stringify(data),
   };
-
-  const text =
-    `\n=== ${PERM} (store=${summary.store}) ===\n` +
-    `score    ms  ${JSON.stringify(summary.score_ms)}\n` +
-    `explainGET   ${JSON.stringify(summary.explain_get_ms)}\n` +
-    `explainWAIT  ${JSON.stringify(summary.explain_wait_ms)}\n` +
-    `explain_found=${summary.explain_found_rate}  misses=${summary.explain_poll_misses}\n` +
-    `http_reqs=${summary.http_reqs} (${summary.http_req_rate}/s)  failed=${summary.http_req_failed_rate}  iters=${summary.iterations}  vus_max=${summary.vus_max}\n`;
-
-  const out = { stdout: text };
-  out[`/results/${PERM}.json`] = JSON.stringify(summary, null, 2);
-  return out;
 }

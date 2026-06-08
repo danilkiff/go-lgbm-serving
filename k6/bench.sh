@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
-# Гоняет четыре прогона REST-нагрузки и складывает результаты в k6/results/:
-#   mem-unlimited  mem-limited  pg-unlimited  pg-limited
-# (in-memory/postgresql) x (без лимита / 1 CPU + 1 GB на контейнер scorer).
-# Лимит вешается только на scorer (docker-compose.limit.yml); postgres держит
-# свои ресурсы. Параметры нагрузки - через окружение (см. значения ниже).
+# Один прогон = текущий режим EXPLAIN и нагрузка RATE по четырём perm
+# (mem/pg x без лимита/1cpu+1gb). Результаты - в каталог прогона
+#   k6/results/run-${EXPLAIN}-${RATE}rps/
+# по два файла на perm: <perm>.json (сырой дамп k6, вкл. p99 и кастомные метрики)
+# и <perm>.server.json (снимок GET /metrics scorer: queue_dropped, explained),
+# плюс metadata.json с параметрами прогона. Разбор - в results/analysis.ipynb.
+# Лимит 1cpu/1gb вешается только на scorer (docker-compose.limit.yml); postgres
+# держит свои ресурсы.
 #
-#   bash k6/bench.sh                 # все четыре прогона с дефолтами
-#   DURATION=10s RATE=300 bash k6/bench.sh   # короче/легче
+#   bash k6/bench.sh                              # async, 1000rps x 30s -> run-async-1000rps
+#   EXPLAIN=inline RATE=4000 bash k6/bench.sh     # inline под стрессом -> run-inline-4000rps
+# Полная матрица:
+#   for e in async inline; do for r in 1000 4000; do EXPLAIN=$e RATE=$r bash k6/bench.sh; done; done
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE="$HERE/docker-compose.yml"
 LIMIT="$HERE/docker-compose.limit.yml"
-RESULTS="$HERE/results"
 PG_DSN='postgresql://scorer:scorer@postgres:5432/scorer'
 
 export RATE="${RATE:-1000}"            # предлагаемых POST /score в секунду
@@ -24,55 +28,56 @@ export EXPLAIN="${EXPLAIN:-async}"     # async (вне горячего пути
 export EXPLAIN_TRIES="${EXPLAIN_TRIES:-20}"
 export THRESHOLD="$(cat "$HERE/threshold" 2>/dev/null || echo 0)"
 
+RUN="run-${EXPLAIN}-${RATE}rps"
+RUN_DIR="$HERE/results/$RUN"
+
 [ -f "$HERE/rows.json" ] || { echo "нет k6/rows.json - сперва: bash k6/gen-rows.sh"; exit 1; }
-mkdir -p "$RESULTS"
+mkdir -p "$RUN_DIR"
 
 teardown() { docker compose -f "$BASE" -f "$LIMIT" --profile pg --profile bench down -v >/dev/null 2>&1 || true; }
 trap teardown EXIT
 
-wait_scorer() { for i in $(seq 1 300); do curl -sf -o /dev/null localhost:8080/metrics && return 0; done; return 1; }
-
 run_perm() {
   local perm="$1" store="$2" limited="$3"
-  echo; echo ">>> $perm (store=$store, limited=$limited, rate=$RATE, dur=$DURATION)"
+  echo; echo ">>> $perm (store=$store, limited=$limited, explain=$EXPLAIN, rate=$RATE, dur=$DURATION)"
   teardown
   export STORE="$store" PERM="$perm"
+  export OUT="/results/$RUN/$perm.json"           # путь внутри k6-контейнера (./results смонтирован в /results)
   [ "$store" = "postgres" ] && export DSN="$PG_DSN" || export DSN=""
 
   local CF=(-f "$BASE"); [ "$limited" = "yes" ] && CF+=(-f "$LIMIT")
 
-  if [ "$store" = "postgres" ]; then
-    docker compose "${CF[@]}" --profile pg up -d postgres >/dev/null
-    local hc=""; for i in $(seq 1 120); do hc=$(docker inspect -f '{{.State.Health.Status}}' lgbm-bench-postgres-1 2>/dev/null || true); [ "$hc" = "healthy" ] && break; done
-    echo "    pg health=$hc"
-  fi
+  # Готовность - через healthcheck'и compose (--wait), без ручных poll-циклов.
+  [ "$store" = "postgres" ] && docker compose "${CF[@]}" --profile pg up -d --wait --wait-timeout 120 postgres >/dev/null
+  docker compose "${CF[@]}" up -d --wait --wait-timeout 120 scorer >/dev/null
+  docker compose "${CF[@]}" logs scorer 2>&1 | grep -o 'explain=[a-z]*, [0-9]* hot handles[^,]*' | head -1 | sed 's/^/    /' || true
 
-  docker compose "${CF[@]}" up -d scorer >/dev/null
-  wait_scorer || { echo "    scorer не поднялся:"; docker compose "${CF[@]}" logs scorer | tail -20; return 1; }
-  docker compose "${CF[@]}" logs scorer 2>&1 | grep -o 'explain=[a-z]*, [0-9]* hot handles[^,]*' | head -1 | sed 's/^/    /'
-
-  # k6 в фоне; пока он крутит нагрузку, снимаем CPU/MEM контейнеров - это и есть
-  # аргумент к bottleneck (CPU у scorer vs занятость postgres).
-  docker compose "${CF[@]}" --profile bench run --rm k6 run /scripts/score-explain.js &
-  local k6pid=$!
-  : > "$RESULTS/$perm.stats.txt"
-  while kill -0 "$k6pid" 2>/dev/null; do
-    docker stats --no-stream --format '{{.Name}} cpu={{.CPUPerc}} mem={{.MemUsage}}' 2>/dev/null \
-      | grep -E 'lgbm-bench-(scorer|postgres)' >> "$RESULTS/$perm.stats.txt" || true
-  done
-  wait "$k6pid" 2>/dev/null || true
-  echo "    peak cpu: $(sort -t= -k2 -rn "$RESULTS/$perm.stats.txt" 2>/dev/null | grep scorer | head -1)"
-
-  curl -s localhost:8080/metrics > "$RESULTS/$perm.metrics.json" 2>/dev/null || true
-  echo "    server: $(cat "$RESULTS/$perm.metrics.json" 2>/dev/null)"
+  # k6 пишет сырой дамп в $OUT (handleSummary); серверные счётчики снимаем сами.
+  docker compose "${CF[@]}" --profile bench run --rm k6 run /scripts/score-explain.js
+  curl -s localhost:8080/metrics > "$RUN_DIR/$perm.server.json" 2>/dev/null || true
+  echo "    server: $(cat "$RUN_DIR/$perm.server.json" 2>/dev/null)"
   teardown
 }
+
+# metadata.json прогона - поля читает ноутбук (title/explain/rate/duration/...).
+cat > "$RUN_DIR/metadata.json" <<JSON
+{
+  "title":     "explain=${EXPLAIN}, ${RATE} rps",
+  "explain":   "${EXPLAIN}",
+  "rate":      ${RATE},
+  "duration":  "${DURATION}",
+  "workers":   ${WORKERS},
+  "threshold": ${THRESHOLD},
+  "host":      "$(uname -srm)",
+  "cpu":       "$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo unknown)"
+}
+JSON
 
 run_perm "mem-unlimited" mem      no
 run_perm "mem-limited"   mem      yes
 run_perm "pg-unlimited"  postgres no
 run_perm "pg-limited"    postgres yes
 
-echo; echo "=== сводка (k6/results) ==="
-python3 "$HERE/summary.py" "$RESULTS"
-echo "(JSON по прогонам: k6/results/<perm>.json, снимки сервера: <perm>.metrics.json)"
+echo; echo "=== прогон записан: k6/results/$RUN ==="
+ls -1 "$RUN_DIR"
+echo "Разбор: k6/results/analysis.ipynb"

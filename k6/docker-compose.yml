@@ -38,6 +38,12 @@ services:
       SCORER_DSN: ${DSN:-}
     ports:
       - "8080:8080"
+    # healthcheck -> bench.sh поднимает через `up -d --wait` вместо ручного опроса.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/metrics"]
+      interval: 1s
+      timeout: 3s
+      retries: 60
 
   # k6 не стартует с `up` (профиль bench): bench.sh гоняет его через
   # `compose run --rm k6 run ...` в той же сети, целясь в http://scorer:8080.
@@ -53,6 +59,7 @@ services:
       MAX_VUS: ${MAX_VUS:-600}
       EXPLAIN_TRIES: ${EXPLAIN_TRIES:-15}
       PERM: ${PERM:-perm}
+      OUT: ${OUT:-/results/summary.json}
     volumes:
       - ./score-explain.js:/scripts/score-explain.js:ro
       - ./rows.json:/scripts/rows.json:ro
