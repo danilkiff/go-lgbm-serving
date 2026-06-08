@@ -61,7 +61,9 @@ export default function () {
   let found = false;
   let waited = 0;
   for (let i = 0; i < TRIES; i++) {
-    const g = http.get(`${BASE}/explain/${id}`, { tags: { ep: 'explain' } });
+    // name фиксируем шаблоном: иначе k6 берёт URL с уникальным id за имя метрики
+    // и плодит по временному ряду на каждый запрос (cardinality explosion).
+    const g = http.get(`${BASE}/explain/${id}`, { tags: { ep: 'explain', name: '/explain/{id}' } });
     if (g.status === 200) {
       explainGet.add(g.timings.duration);
       explainWait.add(waited * 1000 + g.timings.duration);
