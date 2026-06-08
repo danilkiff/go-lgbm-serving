@@ -24,6 +24,7 @@
 | Код причины устойчив | порядок топ-K признаков совпадает с эталоном | [`parity_test.go`](../serving/lgbm/parity_test.go) |
 | Переносимо между платформами | дамп на каждой ОС, затем сравнение | [`cmd/dump`](../serving/cmd/dump/main.go) + [`xparity.py`](../training/xparity.py) |
 | Конкуренция корректна | 64 горутины x 500 предсказаний под `-race` против однопоточного эталона | [`TestPoolConcurrentConsistency`](../serving/lgbm/pool_test.go) |
+| Горячий путь изолирован от explain | p99 `/score` под насыщенным explain далеко ниже одного SHAP | [`TestHotPathIsolation`](../serving/pipeline/explain_test.go) |
 | Задержка / пропускная способность | оценка против contrib против пула | [`bench_test.go`](../serving/lgbm/bench_test.go) |
 
 ## Данные и признаки
@@ -86,6 +87,12 @@ contributions, и
 (`num_threads=1` заодно убирает недетерминизм float-редукции OpenMP). Минимальная версия
 >= 3.2.0 ([#3771](https://github.com/microsoft/LightGBM/pull/3771)); репозиторий
 фиксирует 4.x.
+
+Горячий путь и explain используют раздельные пулы. SHAP кратно дороже
+скоринга, и на общем пуле воркеры explain, заняв все хэндлы под объяснение,
+вытеснили бы скоринг - p99 `/score` тогда растёт до стоимости одного SHAP.
+Раздельные пулы это исключают: `cmd/scorer` даёт горячему пути `GOMAXPROCS`
+хэндлов, explain - по числу воркеров, ценой лишних копий модели в памяти.
 
 ## Результат
 

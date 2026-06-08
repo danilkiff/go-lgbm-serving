@@ -198,30 +198,37 @@ func medianContrib(t *testing.T, p *lgbm.Pool, row []float64, n int) time.Durati
 	return d[n/2]
 }
 
-// TestHotPathIsolation - ключевое свойство: насыщенная очередь explain (нативный
-// SHAP примерно в 58 раз дороже скоринга) не должна попадать на путь /score.
-// Меряет p99 /score вхолостую против полной нагрузки explain и проверяет, что он
-// остаётся сильно ниже стоимости одного SHAP - то есть SHAP не на горячем пути.
+// TestHotPathIsolation - ключевое свойство: насыщенный explain (нативный SHAP
+// примерно в 58 раз дороже скоринга) не должен попадать на путь /score. Горячий
+// путь и explain владеют РАЗДЕЛЬНЫМИ пулами (как их разводит cmd/scorer), поэтому
+// SHAP-воркеры не могут занять хэндлы скоринга. hotPool намеренно мал - ровно по
+// числу воркеров explain: будь пул общим, воркеры заняли бы все хэндлы и /score
+// встал бы за SHAP (этот тест бы упал). Меряет p99 /score под полной нагрузкой
+// explain и проверяет, что он остаётся сильно ниже стоимости одного SHAP.
 func TestHotPathIsolation(t *testing.T) {
 	if testing.Short() {
 		t.Skip("timing test")
 	}
-	pool := tdPoolN(t, 8) // хэндлов больше, чем воркеров explain, чтобы горячий путь не голодал
-	row := make([]float64, pool.NumFeature())
+	const workers = 2
+	hotPool := tdPoolN(t, workers) // мал намеренно: в общем пуле воркеры выжрали бы все хэндлы
+	defer hotPool.Close()
+	explainPool := tdPoolN(t, workers) // explain владеет своими хэндлами
+	defer explainPool.Close()
+	row := make([]float64, hotPool.NumFeature())
 
 	const n = 2000
-	base := scoreP99(t, NewScorer(pool, 1e18, "m", nil), row, n) // одобряем всё, без нагрузки explain
+	base := scoreP99(t, NewScorer(hotPool, 1e18, "m", nil), row, n) // одобряем всё, без нагрузки explain
+	shap := medianContrib(t, explainPool, row, 21)                  // стоимость SHAP на ещё свободном пуле explain
 
 	queue := NewChannelQueue(1024)
 	store := NewMemStore()
-	scorer := NewScorer(pool, -1e18, "m", queue) // отклоняем всё -> насыщаем объяснитель
-	w := NewWorker(pool, store, WorkerConfig{K: 3})
+	scorer := NewScorer(hotPool, -1e18, "m", queue) // отклоняем всё -> насыщаем объяснитель
+	w := NewWorker(explainPool, store, WorkerConfig{K: 3})
 	ctx, cancel := context.WithCancel(context.Background())
-	wait := w.Start(ctx, queue.Events(), 2)
-	defer func() { cancel(); wait(); pool.Close() }()
+	wait := w.Start(ctx, queue.Events(), workers)
+	defer func() { cancel(); wait() }()
 
 	loaded := scoreP99(t, scorer, row, n)
-	shap := medianContrib(t, pool, row, 21)
 
 	_, declined := scorer.Counts()
 	t.Logf("hot-path isolation: /score p99 baseline=%v loaded=%v | one SHAP=%v | declines=%d explained=%d",

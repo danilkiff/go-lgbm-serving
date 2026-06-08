@@ -39,23 +39,34 @@ func main() {
 		log.Fatal("scorer: -model is required (e.g. -model fixtures/model.txt)")
 	}
 
+	// Горячий путь и explain владеют независимыми пулами хэндлов одной модели:
+	// SHAP-воркеры физически не могут занять хэндлы скоринга, поэтому насыщенный
+	// explain не добавляет задержки /score (см. TestHotPathIsolation). Цена -
+	// nWorkers лишних копий модели в памяти.
+	nWorkers := max(*workers, 1)
 	n := runtime.GOMAXPROCS(0)
-	pool, err := lgbm.NewPool(*model, n)
+	hotPool, err := lgbm.NewPool(*model, n)
 	if err != nil {
-		log.Fatalf("scorer: load pool: %v", err)
+		log.Fatalf("scorer: load hot pool: %v", err)
+	}
+	explainPool, err := lgbm.NewPool(*model, nWorkers)
+	if err != nil {
+		hotPool.Close()
+		log.Fatalf("scorer: load explain pool: %v", err)
 	}
 	var catalog *reasoncode.Catalog
 	if *codes != "" {
 		if catalog, err = reasoncode.LoadCatalog(*codes); err != nil {
-			pool.Close()
+			hotPool.Close()
+			explainPool.Close()
 			log.Fatalf("scorer: load codes: %v", err)
 		}
 	}
 
 	queue := pipeline.NewChannelQueue(*queueBuf)
 	store := pipeline.NewMemStore()
-	scorer := pipeline.NewScorer(pool, *threshold, *model, queue)
-	worker := pipeline.NewWorker(pool, store, pipeline.WorkerConfig{
+	scorer := pipeline.NewScorer(hotPool, *threshold, *model, queue)
+	worker := pipeline.NewWorker(explainPool, store, pipeline.WorkerConfig{
 		K:       *topk,
 		Catalog: catalog,
 		Retries: *retries,
@@ -64,11 +75,11 @@ func main() {
 		},
 	})
 
-	// Воркеры explain делят пул Booster с горячим путём; стоимость SHAP считается
-	// здесь, асинхронно, и на /score не попадает.
+	// Воркеры explain считают SHAP на своём пуле, асинхронно; на /score стоимость
+	// не попадает.
 	workerCtx, cancelWorkers := context.WithCancel(context.Background())
 	defer cancelWorkers()
-	waitWorkers := worker.Start(workerCtx, queue.Events(), *workers)
+	waitWorkers := worker.Start(workerCtx, queue.Events(), nWorkers)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /score", scoreHandler(scorer))
@@ -92,7 +103,7 @@ func main() {
 
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- srv.ListenAndServe() }()
-	log.Printf("scorer: %d handles, %d explain workers, threshold=%g, top-%d reason codes, listening on %s", n, *workers, *threshold, *topk, *addr)
+	log.Printf("scorer: %d hot handles + %d explain handles, threshold=%g, top-%d reason codes, listening on %s", n, nWorkers, *threshold, *topk, *addr)
 
 	select {
 	case err := <-serveErr:
@@ -120,7 +131,8 @@ func main() {
 		cancelWorkers()
 		waitWorkers()
 	}
-	pool.Close()
+	explainPool.Close()
+	hotPool.Close()
 	log.Printf("scorer: stopped")
 }
 
