@@ -2,7 +2,7 @@
 # Bootstrap всего пайплайна на чистой машине:
 #   датасет RBA (~9 ГБ) -> обучение модели -> эталоны паритета -> тесты на Go.
 #
-# Требует: uv, go >= 1.24, kaggle CLI + токен (~/.kaggle/kaggle.json),
+# Требует: uv, go >= 1.26, kaggle CLI + токен (~/.kaggle/kaggle.json),
 # рантайм OpenMP (Linux: libgomp; macOS: brew install libomp).
 # Повторный запуск перекачивает датасет заново (fetch_rba.sh не кэширует).
 set -euo pipefail
