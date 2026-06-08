@@ -340,6 +340,10 @@ def main() -> None:
     out = pathlib.Path(args.outdir)
     out.mkdir(parents=True, exist_ok=True)
     booster.save_model(str(out / "model.txt"))
+    # holdout - это float32-признаки (load_rba приводит X к float32): %.10g их
+    # round-trip точно, и Go читает тот же вход -> паритет битоточный. ref_raw и
+    # ref_contrib - float64 из predict, им нужен %.17g (ср. dump_from_model, где
+    # holdout сам float64 и тоже идёт %.17g).
     np.savetxt(out / "holdout.csv", X_ho, delimiter=",", header=",".join(names), comments="", fmt="%.10g")
     np.savetxt(out / "ref_raw.csv", raw, delimiter=",", header="raw_margin", comments="", fmt="%.17g")
     np.savetxt(
