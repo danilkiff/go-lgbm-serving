@@ -27,6 +27,9 @@ func TestDirection(t *testing.T) {
 	if Direction(-0.5) != "decreased risk" {
 		t.Error("negative contribution should decrease risk")
 	}
+	if Direction(0) != "no effect" {
+		t.Error("zero contribution pushed nowhere")
+	}
 }
 
 func TestLoadCatalog(t *testing.T) {

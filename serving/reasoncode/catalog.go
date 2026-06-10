@@ -38,14 +38,17 @@ func (c *Catalog) Lookup(feature int) Code {
 	return Code{Code: fmt.Sprintf("R%d", feature), Label: fmt.Sprintf("feature %d", feature)}
 }
 
-// Direction сообщает, толкнул ли contribution оценку в сторону неблагоприятного решения.
-// В этой схеме большой raw margin означает больший риск, поэтому
-// неотрицательный contribution риск увеличил.
+// Direction сообщает, куда contribution толкнул оценку. В этой схеме большой raw
+// margin означает больший риск: положительный contribution риск увеличил,
+// отрицательный - уменьшил, нулевой не толкал никуда.
 func Direction(contribution float64) string {
-	if contribution >= 0 {
+	switch {
+	case contribution > 0:
 		return "increased risk"
+	case contribution < 0:
+		return "decreased risk"
 	}
-	return "decreased risk"
+	return "no effect"
 }
 
 // LoadCatalog читает JSON-объект, отображающий индекс признака (строковый ключ) в
