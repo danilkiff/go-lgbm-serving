@@ -35,8 +35,10 @@ def main() -> None:
     c_d = np.abs(ca - cb)
 
     k = 3
-    top_a = np.argsort(-np.abs(ca[:, :nfeat]), axis=1)[:, :k]
-    top_b = np.argsort(-np.abs(cb[:, :nfeat]), axis=1)[:, :k]
+    # kind="stable": ничьи по |contribution| разрешаются меньшим индексом - тот же
+    # детерминизм, что у reasoncode.TopK на стороне Go, иначе ничья даёт ложный mismatch.
+    top_a = np.argsort(-np.abs(ca[:, :nfeat]), axis=1, kind="stable")[:, :k]
+    top_b = np.argsort(-np.abs(cb[:, :nfeat]), axis=1, kind="stable")[:, :k]
     top_mismatch = int(np.sum(np.any(top_a != top_b, axis=1)))
 
     print(f"rows={n}  features={nfeat}")
