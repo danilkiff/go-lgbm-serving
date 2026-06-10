@@ -39,6 +39,8 @@ type Store interface {
 }
 
 // MemStore - in-memory Store, безопасный для конкурентного использования.
+// Растёт неограниченно: записи не вытесняются, пока жив процесс - долгоживущему
+// сервису нужен адаптер с retention-политикой за тем же интерфейсом Store.
 type MemStore struct {
 	mu sync.RWMutex
 	m  map[string]Explanation
