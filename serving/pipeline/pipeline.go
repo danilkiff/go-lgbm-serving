@@ -57,6 +57,11 @@ type Queue interface {
 type ChannelQueue struct {
 	ch      chan DeclineEvent
 	dropped atomic.Int64
+	// OnDrop, если задан, вызывается на каждое отброшенное событие: отброс - это
+	// отклонение, навсегда оставшееся без объяснения, и след по id обязан быть
+	// per-event, а не только счётчиком. Выполняется на горячем пути издателя -
+	// только дешёвые действия. Задавать до первого Publish.
+	OnDrop func(DeclineEvent)
 }
 
 // NewChannelQueue возвращает ChannelQueue с буфером на buffer событий.
@@ -74,6 +79,9 @@ func (q *ChannelQueue) Publish(e DeclineEvent) bool {
 		return true
 	default:
 		q.dropped.Add(1)
+		if q.OnDrop != nil {
+			q.OnDrop(e)
+		}
 		return false
 	}
 }
