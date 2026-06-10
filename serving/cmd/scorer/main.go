@@ -108,9 +108,13 @@ func main() {
 	shutCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(shutCtx); err != nil {
+		// Таймаут Shutdown: обработчики ещё в полёте - могут публиковать в очередь
+		// (Publish в закрытый канал паникует) и держать хэндлы пула (Close под
+		// активным Predict - use-after-free). Безопасно только выйти.
 		log.Printf("scorer: http shutdown: %v", err)
+		os.Exit(1)
 	}
-	queue.Close() // после Shutdown издателей нет -> воркеры дочищают очередь
+	queue.Close() // Shutdown успешен: издателей нет -> воркеры дочищают очередь
 	drained := make(chan struct{})
 	go func() { waitWorkers(); close(drained) }()
 	select {
