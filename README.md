@@ -32,7 +32,11 @@
 
 ## TLDR: результаты
 
-Модель обучена - качество скромное: ROC-AUC `0.703` на синтетическом RBA, ни один признак не доминирует.
+Модель обучена - качество скромное: ROC-AUC `0.703` на синтетическом RBA, ни один
+признак не доминирует (max gain 33%). Цифры качества сведены с данными программно:
+артефакт [validation.json](training/results/validation.json) и ноутбук
+[analysis.ipynb](training/results/analysis.ipynb), воспроизводится
+`make -C training validate notebook`.
 
 Паритет битово точный на одной сборке (holdout 50000):
 
