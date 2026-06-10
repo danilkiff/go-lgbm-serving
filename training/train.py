@@ -124,18 +124,20 @@ def load_rba(path: str, target: str):
         convert_options=pacsv.ConvertOptions(include_columns=include, strings_can_be_null=True),
     )
 
-    def num(name):
-        return tbl[name].to_numpy(zero_copy_only=False)
+    # Помощники получают таблицу параметром по умолчанию - ссылка связывается при
+    # определении и не зависит от del tbl ниже (замыкание на удалённое имя - F821).
+    def num(name, t=tbl):
+        return t[name].to_numpy(zero_copy_only=False)
 
-    def codes(name):
+    def codes(name, t=tbl):
         # Строку -> целочисленный код через словарное кодирование Arrow, без
         # материализации 33M python-строк. null -> -1.
-        d = tbl[name].combine_chunks().dictionary_encode()
+        d = t[name].combine_chunks().dictionary_encode()
         idx = d.indices.to_numpy(zero_copy_only=False).astype("float64")
         return np.nan_to_num(idx, nan=-1).astype("int32")
 
-    def boolean(name):
-        c = tbl[name]
+    def boolean(name, t=tbl):
+        c = t[name]
         if pa.types.is_boolean(c.type):
             return c.to_numpy(zero_copy_only=False).astype("int8")
         d = c.combine_chunks().dictionary_encode()
