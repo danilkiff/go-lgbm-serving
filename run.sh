@@ -4,7 +4,7 @@
 #
 # Требует: uv, go >= 1.24, kaggle CLI + токен (~/.kaggle/kaggle.json),
 # рантайм OpenMP (Linux: libgomp; macOS: brew install libomp).
-# Повторный запуск перекачивает датасет заново (fetch_rba.sh не кэширует).
+# Повторный запуск идемпотентен: уже скачанный датасет fetch_rba.sh пропускает.
 set -euo pipefail
 cd "$(dirname "$0")"
 
