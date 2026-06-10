@@ -38,10 +38,15 @@ extern int LGBM_BoosterPredictForMat(BoosterHandle handle, const void* data, int
 import "C"
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"unsafe"
 )
+
+// ErrFeatureCount - вход неверной ширины. Ошибка вызывающего (для HTTP это 4xx),
+// в отличие от сбоя самого нативного предиктора; различается через errors.Is.
+var ErrFeatureCount = errors.New("feature count mismatch")
 
 // Константы C API (из c_api.h; стабильны в пределах 4.x).
 const (
@@ -130,7 +135,7 @@ func (b *Booster) Close() {
 // вызов cgo).
 func (b *Booster) predictInto(row []float64, predictType, outLen int) ([]float64, error) {
 	if len(row) != b.nFeature {
-		return nil, fmt.Errorf("lgbm: expected %d features, got %d", b.nFeature, len(row))
+		return nil, fmt.Errorf("lgbm: %w: expected %d features, got %d", ErrFeatureCount, b.nFeature, len(row))
 	}
 	out := make([]float64, outLen)
 	var written C.int64_t

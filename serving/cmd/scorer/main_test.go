@@ -3,10 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/danilkiff/go-lgbm-serving/lgbm"
 	"github.com/danilkiff/go-lgbm-serving/pipeline"
 )
 
@@ -42,6 +45,28 @@ func TestScoreHandler(t *testing.T) {
 	}
 	if len(f.got) != 3 {
 		t.Fatalf("scorer received %d features, want 3", len(f.got))
+	}
+}
+
+// TestScoreHandlerErrorStatus: неверная ширина входа - 422 (ошибка клиента),
+// сбой нативного предиктора - 500 (не вина запроса).
+func TestScoreHandlerErrorStatus(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{"feature count -> 422", fmt.Errorf("score: %w", lgbm.ErrFeatureCount), http.StatusUnprocessableEntity},
+		{"native failure -> 500", errors.New("native predictor failed"), http.StatusInternalServerError},
+	}
+	for _, tc := range cases {
+		h := scoreHandler(&fakeScorer{err: tc.err})
+		body, _ := json.Marshal(scoreRequest{Features: []float64{1}})
+		rec := httptest.NewRecorder()
+		h(rec, httptest.NewRequest(http.MethodPost, "/score", bytes.NewReader(body)))
+		if rec.Code != tc.want {
+			t.Errorf("%s: status=%d, want %d", tc.name, rec.Code, tc.want)
+		}
 	}
 }
 

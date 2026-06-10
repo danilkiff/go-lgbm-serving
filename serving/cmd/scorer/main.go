@@ -10,6 +10,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"log"
 	"net/http"
@@ -161,7 +162,13 @@ func scoreHandler(s scorer) http.HandlerFunc {
 		}
 		res, err := s.Score(req.Features)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnprocessableEntity)
+			// Неверная ширина входа - ошибка клиента (422); всё прочее - сбой
+			// нативного предиктора, и это 500, а не вина запроса.
+			status := http.StatusInternalServerError
+			if errors.Is(err, lgbm.ErrFeatureCount) {
+				status = http.StatusUnprocessableEntity
+			}
+			http.Error(w, err.Error(), status)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
