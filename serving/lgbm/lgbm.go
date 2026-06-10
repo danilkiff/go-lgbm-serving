@@ -33,7 +33,9 @@ extern int LGBM_BoosterPredictForMat(BoosterHandle handle, const void* data, int
 // lib_lightgbm из uv-venv (Python зафиксирован на 3.12 через .python-version)
 // стабилен, и голый `go build ./...` собирается без настройки окружения.
 #cgo LDFLAGS: -L${SRCDIR}/../../training/.venv/lib/python3.12/site-packages/lightgbm/lib -Wl,-rpath,${SRCDIR}/../../training/.venv/lib/python3.12/site-packages/lightgbm/lib -l_lightgbm
-#cgo darwin LDFLAGS: -Wl,-rpath,/opt/homebrew/opt/libomp/lib
+// rpath на оба префикса Homebrew: /opt/homebrew (Apple Silicon) и /usr/local
+// (Intel); несуществующий путь линковщик молча пропускает.
+#cgo darwin LDFLAGS: -Wl,-rpath,/opt/homebrew/opt/libomp/lib -Wl,-rpath,/usr/local/opt/libomp/lib
 */
 import "C"
 
