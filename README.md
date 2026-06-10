@@ -46,11 +46,12 @@
 - смен решения `0`;
 - топ-3 кодов `0/50000`.
 
-Кросс-платформенно (arm64 против x86_64, та же `model.txt`):
+Кросс-платформенно (darwin-arm64 против linux-amd64, та же `model.txt`, холдаут
+4000 строк, 89% с NaN - missing-ветки деревьев под проверкой):
 
 - raw margin совпадает до бита (maxD `0`, 0 смен);
-- SHAP maxD `7.8e-16`;
-- топ-3 идентичны.
+- SHAP maxD `6.7e-16`;
+- топ-3 идентичны (`make -C serving xparity-dump` на обеих платформах, сверка `xparity.py`).
 
 Нативный SHAP на инференсе - только LightGBM/XGBoost (C-ABI `C_API_PREDICT_CONTRIB`),
 CatBoost и ONNX не подходят.
