@@ -211,7 +211,10 @@ def _sample_holdout(rng, n: int, names):
             c = rng.exponential(3600.0, n)
             c[rng.random(n) < 0.1] = -1.0  # первый вход пользователя
         elif nm == "rtt_ms":
+            # В реальном RBA RTT ~96% null: без NaN паритет не заходил бы в
+            # missing-ветки деревьев (default_left) - а это основной маршрут.
             c = rng.gamma(2.0, 50.0, n)
+            c[rng.random(n) < 0.9] = np.nan
         else:
             c = rng.standard_normal(n)
         cols.append(np.asarray(c, dtype="float64"))
