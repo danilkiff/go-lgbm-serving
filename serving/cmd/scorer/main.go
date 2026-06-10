@@ -9,9 +9,11 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -39,6 +41,12 @@ func main() {
 	if *model == "" {
 		log.Fatal("scorer: -model is required (e.g. -model fixtures/model.txt)")
 	}
+	// Версия модели - путь плюс sha256-префикс файла: объяснение в Explanation
+	// привязано к байтам модели, принявшей решение, а не к имени файла.
+	modelVer, err := modelVersion(*model)
+	if err != nil {
+		log.Fatalf("scorer: model version: %v", err)
+	}
 
 	// Хэндлов больше, чем воркеров explain: даже при всех воркерах, занятых SHAP,
 	// горячему пути остаётся GOMAXPROCS хэндлов. Резерв закрывает голод по
@@ -63,7 +71,7 @@ func main() {
 		log.Printf("explain: queue full, explanation lost id=%s margin=%g", e.ID, e.Margin)
 	}
 	store := pipeline.NewMemStore()
-	scorer := pipeline.NewScorer(pool, *threshold, *model, queue)
+	scorer := pipeline.NewScorer(pool, *threshold, modelVer, queue)
 	worker := pipeline.NewWorker(pool, store, pipeline.WorkerConfig{
 		K:       *topk,
 		Catalog: catalog,
@@ -135,6 +143,17 @@ func main() {
 	}
 	pool.Close()
 	log.Printf("scorer: stopped")
+}
+
+// modelVersion возвращает "путь@sha256-префикс" файла модели - идентификатор,
+// по которому объяснение сверяется с байтами модели, а не с именем файла.
+func modelVersion(path string) (string, error) {
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(b)
+	return fmt.Sprintf("%s@%x", path, sum[:8]), nil
 }
 
 // scorer - поведение горячего пути, нужное HTTP-обработчику; *pipeline.Scorer
