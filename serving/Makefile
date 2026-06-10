@@ -6,7 +6,7 @@
 PLATFORM := $(shell go env GOOS)-$(shell go env GOARCH)
 
 .DEFAULT_GOAL := help
-.PHONY: help test race bench bench-smoke run vet tidy clean print-env xparity-dump
+.PHONY: help test race bench bench-smoke run vet tidy clean print-env xparity-dump fmt-check
 
 help: ## показать цели этого Makefile
 	@grep -hE '^[a-zA-Z][a-zA-Z_-]*:.*## ' $(MAKEFILE_LIST) | \
@@ -34,6 +34,9 @@ run: ## запустить scorer на фикстуре (флаги явные; 
 
 vet: ## go vet
 	go vet ./...
+
+fmt-check: ## гейт CI: падает, если gofmt есть что менять
+	@out="$$(gofmt -l .)"; [ -z "$$out" ] || { echo "needs gofmt:"; echo "$$out"; exit 1; }
 
 tidy: ## go mod tidy
 	go mod tidy

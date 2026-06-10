@@ -20,15 +20,22 @@ jobs:
       # lib_lightgbm.so, с которой линкуется cgo (см. README, "Архитектура").
       # libgomp на раннере Ubuntu уже есть.
       - name: Install uv
+        # Версия пиннована: непиннованный installer делает раннер невоспроизводимым.
         run: |
-          curl -LsSf https://astral.sh/uv/install.sh | sh
+          curl -LsSf https://astral.sh/uv/0.11.3/install.sh | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Python deps (LightGBM + native lib)
         run: cd training && uv sync --no-default-groups
 
+      - name: Lint (ruff)
+        run: cd training && uv run --group dev ruff check .
+
       - name: Generate reference artifacts
         run: make -C training data
+
+      - name: Format check (gofmt)
+        run: make -C serving fmt-check
 
       - name: Vet
         run: make -C serving vet
