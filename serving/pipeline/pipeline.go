@@ -1,5 +1,5 @@
 // Пакет pipeline - топология конвейера decline->explain. Горячий путь скорит
-// транзакцию через пул Booster LightGBM и только для отклонений выкладывает
+// попытку входа через пул Booster LightGBM и только для отклонений выкладывает
 // DeclineEvent вне горячего пути; нативные коды причин SHAP считает воркер
 // асинхронно, никогда не инлайн - именно эту стоимость (примерно в 58 раз дороже
 // скоринга) мы держим вне критического пути.
@@ -14,7 +14,7 @@ import (
 	"github.com/danilkiff/go-lgbm-serving/lgbm"
 )
 
-// Decision - вердикт горячего пути по одной транзакции.
+// Decision - вердикт горячего пути по одной попытке входа.
 type Decision uint8
 
 const (
@@ -104,15 +104,15 @@ func (q *ChannelQueue) Cap() int { return cap(q.ch) }
 // паникует.
 func (q *ChannelQueue) Close() { close(q.ch) }
 
-// ScoreResult - ответ горячего пути по одной транзакции.
+// ScoreResult - ответ горячего пути по одной попытке входа.
 type ScoreResult struct {
 	ID       string
 	Margin   float64
 	Decision Decision
 }
 
-// Scorer - горячий путь: скоринг -> решение -> (для отклонений) публикация
-// DeclineEvent. SHAP никогда не считается инлайн.
+// Scorer - горячий путь: скоринг попытки входа -> решение -> (для отклонений)
+// публикация DeclineEvent. SHAP никогда не считается инлайн.
 type Scorer struct {
 	pool      *lgbm.Pool
 	threshold float64
@@ -123,8 +123,8 @@ type Scorer struct {
 	declined  atomic.Int64
 }
 
-// NewScorer собирает горячий путь. Транзакция отклоняется, когда её raw margin
-// превышает threshold. queue может быть nil - тогда отклонения ничего не
+// NewScorer собирает горячий путь. Попытка входа отклоняется, когда её raw
+// margin превышает threshold. queue может быть nil - тогда отклонения ничего не
 // выкладывают.
 func NewScorer(pool *lgbm.Pool, threshold float64, modelVer string, queue Queue) *Scorer {
 	return &Scorer{
@@ -163,7 +163,7 @@ func (s *Scorer) Score(row []float64) (ScoreResult, error) {
 	return res, nil
 }
 
-// Counts возвращает, сколько транзакций сосчитано и сколько отклонено.
+// Counts возвращает, сколько попыток входа сосчитано и сколько отклонено.
 func (s *Scorer) Counts() (scored, declined int64) {
 	return s.scored.Load(), s.declined.Load()
 }

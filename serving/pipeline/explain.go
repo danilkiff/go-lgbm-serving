@@ -20,7 +20,7 @@ type ReasonCode struct {
 	Contribution float64 `json:"contribution"`
 }
 
-// Explanation - артефакт вне пути для отклонённой транзакции: топ-K кодов причин
+// Explanation - артефакт вне пути для отклонённой попытки входа: топ-K кодов причин
 // плюс значения, по которым его можно сверить с принятым решением (Margin) и
 // моделью, его принявшей (ModelVer).
 type Explanation struct {
