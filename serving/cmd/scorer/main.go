@@ -39,7 +39,10 @@ func main() {
 		log.Fatal("scorer: -model is required (e.g. -model fixtures/model.txt)")
 	}
 
-	n := runtime.GOMAXPROCS(0)
+	// Хэндлов больше, чем воркеров explain: даже при всех воркерах, занятых SHAP,
+	// горячему пути остаётся GOMAXPROCS хэндлов. Резерв закрывает голод по
+	// хэндлам, но не контентию по CPU (см. TestHotPathIsolation).
+	n := runtime.GOMAXPROCS(0) + *workers
 	pool, err := lgbm.NewPool(*model, n)
 	if err != nil {
 		log.Fatalf("scorer: load pool: %v", err)
