@@ -155,6 +155,9 @@ type scoreResponse struct {
 
 func scoreHandler(s scorer) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Валидный запрос - сотни байт (12 float64); мегабайт отсекает только
+		// мусор, не давая раздуть память сервиса произвольным телом.
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 		var req scoreRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)

@@ -79,6 +79,23 @@ func TestScoreHandlerBadJSON(t *testing.T) {
 	}
 }
 
+// TestScoreHandlerBodyTooLarge: тело сверх лимита обрезается MaxBytesReader и
+// не доходит до скоринга.
+func TestScoreHandlerBodyTooLarge(t *testing.T) {
+	f := &fakeScorer{}
+	h := scoreHandler(f)
+	body := append([]byte(`{"features":[`), bytes.Repeat([]byte("1,"), 1<<20)...)
+	body = append(body, '1', ']', '}')
+	rec := httptest.NewRecorder()
+	h(rec, httptest.NewRequest(http.MethodPost, "/score", bytes.NewReader(body)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d, want 400", rec.Code)
+	}
+	if f.got != nil {
+		t.Fatal("oversized request must not reach the scorer")
+	}
+}
+
 type fakeStore struct {
 	exp pipeline.Explanation
 	ok  bool
