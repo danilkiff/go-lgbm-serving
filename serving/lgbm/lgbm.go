@@ -101,6 +101,12 @@ func LoadBooster(path string) (*Booster, error) {
 		C.LGBM_BoosterFree(h)
 		return nil, err
 	}
+	// PredictRaw отдаёт ровно один margin (out[0]): мультиклассовая модель молча
+	// теряла бы остальные классы - отказываем на загрузке, а не в проде.
+	if b.rawLen != 1 {
+		C.LGBM_BoosterFree(h)
+		return nil, fmt.Errorf("lgbm: model outputs %d values per row, expected 1 (binary or regression)", b.rawLen)
+	}
 	if b.contribLen, err = calcNumPredict(h, cPredictContrib); err != nil {
 		C.LGBM_BoosterFree(h)
 		return nil, err
