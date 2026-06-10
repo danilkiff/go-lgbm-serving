@@ -61,8 +61,8 @@ rows = [
     ("DESIGN: частоты страны/ASN читают метку - ROC-AUC 0.89 против 0.70",
      f"{lk['roc_auc']:.3f} против {fx['roc_auc']:.3f}",
      round(lk["roc_auc"], 2) == 0.89 and round(fx["roc_auc"], 2) == 0.70),
-    ("DESIGN: на частоты приходится ~97% gain",
-     f"{lk['freq_gain_share']:.1%}", abs(lk["freq_gain_share"] - 0.97) < 0.015),
+    ("DESIGN: на частоты приходится 97.7% gain",
+     f"{lk['freq_gain_share']:.1%}", abs(lk["freq_gain_share"] - 0.977) < 0.01),
     ("DESIGN: временной сплит ниже случайного по ROC-AUC и lift",
      f"ROC {sc['temporal']['roc_auc']:.3f}<{sc['random']['roc_auc']:.3f}, "
      f"lift {sc['temporal']['lift']:.2f}<{sc['random']['lift']:.2f}",
