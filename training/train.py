@@ -52,6 +52,21 @@ def load_csv(path: str, target: str):
     return X, y, names
 
 
+# Параметры обучения - единый источник: validate.py переобучает модели для
+# сравнения сплитов и контраста утечки строго с теми же параметрами.
+# num_threads и seed подставляются в месте вызова.
+TRAIN_PARAMS = {
+    "objective": "binary",
+    "num_leaves": 31,
+    "learning_rate": 0.05,
+    "min_data_in_leaf": 50,
+    "feature_fraction": 1.0,
+    "bagging_fraction": 1.0,  # bagging многопоточный и невоспроизводимый - выключаем
+    "deterministic": True,
+    "force_row_wise": True,
+    "verbose": -1,
+}
+
 # Инженерные признаки RBA в порядке столбцов holdout.csv и индексов кодов причин.
 # Код причины - стабильный идентификатор adverse-action; метка - человекочитаемая.
 RBA_FEATURES = [
@@ -87,14 +102,18 @@ def _resolve(header, want):
     return out
 
 
-def load_rba(path: str, target: str):
+def load_rba(path: str, target: str, extras: bool = False):
     """Строит числовые RBA-признаки из сырого датасета RBA. Цель: 'attack'
     (Is Attack IP) или 'ato' (Is Account Takeover).
 
     Признаки причинны по времени: новизна и счётчики считаются в хронологическом
     порядке на пользователя, поэтому используют только прошлое - без утечки метки.
     Сырые IP и полная строка User-Agent выброшены: высокая кардинальность,
-    избыточность с ОС/браузером и близость к метке (она задаётся по IP)."""
+    избыточность с ОС/браузером и близость к метке (она задаётся по IP).
+
+    extras=True добавляет шестым результатом сырые коды страны/ASN, выровненные
+    со строками X, - validate.py восстанавливает из них выброшенные
+    глобально-частотные признаки для контраста утечки."""
     import pyarrow.csv as pacsv
     import pyarrow as pa
     import pandas as pd
@@ -190,6 +209,9 @@ def load_rba(path: str, target: str):
     y = d["y"].to_numpy().astype("int32")
     ts = d["ts"].to_numpy()  # datetime64, выровнен с X - для временного сплита и дрейфа
     reason_codes = {f[0]: {"code": f[1], "label": f[2]} for f in RBA_FEATURES}
+    if extras:
+        aux = {"country": d["country"].to_numpy(), "asn": d["asn"].to_numpy()}
+        return X, y, ts, names, reason_codes, aux
     return X, y, ts, names, reason_codes
 
 
@@ -304,19 +326,7 @@ def main() -> None:
     X_tr, y_tr = X[train_idx], y[train_idx]
     X_ho, y_ho = X[hold_idx], y[hold_idx]
 
-    params = {
-        "objective": "binary",
-        "num_leaves": 31,
-        "learning_rate": 0.05,
-        "min_data_in_leaf": 50,
-        "feature_fraction": 1.0,
-        "bagging_fraction": 1.0,  # bagging многопоточный и невоспроизводимый - выключаем
-        "deterministic": True,
-        "force_row_wise": True,
-        "num_threads": args.threads,
-        "seed": args.seed,
-        "verbose": -1,
-    }
+    params = {**TRAIN_PARAMS, "num_threads": args.threads, "seed": args.seed}
     booster = lgb.train(
         params,
         lgb.Dataset(X_tr, label=y_tr, feature_name=names),

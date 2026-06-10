@@ -1,2 +1,4 @@
 # не учитываем модель в списке языков GH
 serving/fixtures/model.txt linguist-generated
+# ipynb генерируется из analysis.py (jupytext) - вне статистики языков
+training/results/analysis.ipynb linguist-generated

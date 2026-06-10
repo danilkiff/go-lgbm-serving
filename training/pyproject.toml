@@ -13,6 +13,8 @@ dependencies = [
 
 [dependency-groups]
 dev = ["ruff>=0.6"]
+# Рендер results/analysis.ipynb из analysis.py (make notebook); расчётам не нужен.
+analysis = ["matplotlib>=3.8", "jupytext>=1.16", "nbconvert>=7.16", "ipykernel>=6.29"]
 
 [tool.ruff]
 line-length = 100
