@@ -180,9 +180,8 @@ func scoreHandler(s scorer) http.HandlerFunc {
 		// Валидный запрос - сотни байт (12 float64); мегабайт отсекает только
 		// мусор, не давая раздуть память сервиса произвольным телом.
 		r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
-		dec := json.NewDecoder(r.Body)
-		var req scoreRequest
-		if err := dec.Decode(&req); err != nil {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
 			var tooLarge *http.MaxBytesError
 			if errors.As(err, &tooLarge) {
 				http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
@@ -191,16 +190,11 @@ func scoreHandler(s scorer) http.HandlerFunc {
 			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		// Запрос - ровно один JSON-объект: Decode останавливается на его конце, и
-		// без этой проверки хвост из мусора (или второго объекта) молча принимался
-		// бы, а большое тело могло не дочитаться до лимита.
-		if _, err := dec.Token(); err != io.EOF {
-			var tooLarge *http.MaxBytesError
-			if errors.As(err, &tooLarge) {
-				http.Error(w, err.Error(), http.StatusRequestEntityTooLarge)
-				return
-			}
-			http.Error(w, "bad request: trailing data after JSON object", http.StatusBadRequest)
+		// Запрос - ровно один JSON-объект: непробельный хвост (мусор или второй
+		// объект) Unmarshal отвергает, и до скоринга он не доходит.
+		var req scoreRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 			return
 		}
 		row := make([]float64, len(req.Features))
