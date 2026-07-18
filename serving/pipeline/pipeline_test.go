@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"errors"
+	"math"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -90,6 +91,36 @@ func TestScorerApproveNoEmit(t *testing.T) {
 	case <-q.Events():
 		t.Fatal("approve must not emit an event")
 	default:
+	}
+}
+
+// TestScorerThresholdBoundary закрепляет строгость порога: margin, равный
+// threshold, одобряется; decline только при margin строго выше (контракт флага
+// -threshold: "decline if margin > threshold"). Margin детерминирован на одном
+// хэндле, поэтому равенство воспроизводимо точно.
+func TestScorerThresholdBoundary(t *testing.T) {
+	pool := tdPoolN(t, 1)
+	defer pool.Close()
+	row := make([]float64, pool.NumFeature())
+	margin, err := pool.PredictRaw(row)
+	if err != nil {
+		t.Fatalf("margin: %v", err)
+	}
+
+	res, err := NewScorer(pool, margin, "m", nil).Score(row)
+	if err != nil {
+		t.Fatalf("score: %v", err)
+	}
+	if res.Decision != Approve {
+		t.Fatalf("margin == threshold: decision=%v, want approve", res.Decision)
+	}
+
+	below := math.Nextafter(margin, math.Inf(-1))
+	if res, err = NewScorer(pool, below, "m", nil).Score(row); err != nil {
+		t.Fatalf("score: %v", err)
+	}
+	if res.Decision != Decline {
+		t.Fatalf("threshold один ulp ниже margin: decision=%v, want decline", res.Decision)
 	}
 }
 
