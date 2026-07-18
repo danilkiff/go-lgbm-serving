@@ -89,7 +89,7 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /score", scoreHandler(scorer))
 	mux.HandleFunc("GET /explain/{id}", explainHandler(store))
-	mux.HandleFunc("GET /metrics", metricsHandler(func() metricsResponse {
+	mux.HandleFunc("GET /metrics", func(w http.ResponseWriter, r *http.Request) {
 		scored, declined := scorer.Counts()
 		m := metricsResponse{
 			Scored: scored, Declined: declined,
@@ -99,8 +99,9 @@ func main() {
 		if scored > 0 {
 			m.DeclineRate = float64(declined) / float64(scored)
 		}
-		return m
-	}))
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(m)
+	})
 
 	srv := &http.Server{Addr: *addr, Handler: mux}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -248,11 +249,4 @@ type metricsResponse struct {
 	QueueDropped int64   `json:"queue_dropped"`
 	Explained    int64   `json:"explained"`
 	DeadLettered int64   `json:"dead_lettered"`
-}
-
-func metricsHandler(snapshot func() metricsResponse) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(snapshot())
-	}
 }

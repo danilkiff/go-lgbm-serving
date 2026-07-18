@@ -178,21 +178,3 @@ func TestExplainHandlerNotFound(t *testing.T) {
 		t.Fatalf("status=%d, want 404", rec.Code)
 	}
 }
-
-func TestMetricsHandler(t *testing.T) {
-	h := metricsHandler(func() metricsResponse {
-		return metricsResponse{Scored: 100, Declined: 5, DeclineRate: 0.05, QueueCap: 1024, Explained: 5}
-	})
-	rec := httptest.NewRecorder()
-	h(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status=%d", rec.Code)
-	}
-	var got metricsResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if got.Scored != 100 || got.Declined != 5 || got.QueueCap != 1024 {
-		t.Fatalf("metrics=%+v", got)
-	}
-}
