@@ -15,6 +15,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"os/signal"
@@ -163,7 +164,10 @@ type scorer interface {
 }
 
 type scoreRequest struct {
-	Features []float64 `json:"features"`
+	// Указатели ради null: JSON не умеет NaN, а missing-значения (непомеренный
+	// RTT - штатный случай, ~96% в обучающих данных) идут в missing-ветки
+	// деревьев. null -> NaN; молчаливый ноль был бы другим, легитимным значением.
+	Features []*float64 `json:"features"`
 }
 
 type scoreResponse struct {
@@ -182,7 +186,15 @@ func scoreHandler(s scorer) http.HandlerFunc {
 			http.Error(w, "bad request: "+err.Error(), http.StatusBadRequest)
 			return
 		}
-		res, err := s.Score(req.Features)
+		row := make([]float64, len(req.Features))
+		for i, f := range req.Features {
+			if f == nil {
+				row[i] = math.NaN()
+			} else {
+				row[i] = *f
+			}
+		}
+		res, err := s.Score(row)
 		if err != nil {
 			// Неверная ширина входа - ошибка клиента (422); всё прочее - сбой
 			// нативного предиктора, и это 500, а не вина запроса.

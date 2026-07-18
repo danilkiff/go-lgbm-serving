@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -32,9 +33,8 @@ func TestScoreHandler(t *testing.T) {
 	f := &fakeScorer{res: pipeline.ScoreResult{ID: "abc", Margin: 1.5, Decision: pipeline.Decline}}
 	h := scoreHandler(f)
 
-	body, _ := json.Marshal(scoreRequest{Features: []float64{1, 2, 3}})
 	rec := httptest.NewRecorder()
-	h(rec, httptest.NewRequest(http.MethodPost, "/score", bytes.NewReader(body)))
+	h(rec, httptest.NewRequest(http.MethodPost, "/score", strings.NewReader(`{"features":[1,2,3]}`)))
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
@@ -64,12 +64,26 @@ func TestScoreHandlerErrorStatus(t *testing.T) {
 	}
 	for _, tc := range cases {
 		h := scoreHandler(&fakeScorer{err: tc.err})
-		body, _ := json.Marshal(scoreRequest{Features: []float64{1}})
 		rec := httptest.NewRecorder()
-		h(rec, httptest.NewRequest(http.MethodPost, "/score", bytes.NewReader(body)))
+		h(rec, httptest.NewRequest(http.MethodPost, "/score", strings.NewReader(`{"features":[1]}`)))
 		if rec.Code != tc.want {
 			t.Errorf("%s: status=%d, want %d", tc.name, rec.Code, tc.want)
 		}
+	}
+}
+
+// TestScoreHandlerNullIsMissing: null в features - это NaN (missing-ветки
+// деревьев), а не молчаливый ноль: ноль - другое, легитимное значение признака.
+func TestScoreHandlerNullIsMissing(t *testing.T) {
+	f := &fakeScorer{}
+	h := scoreHandler(f)
+	rec := httptest.NewRecorder()
+	h(rec, httptest.NewRequest(http.MethodPost, "/score", strings.NewReader(`{"features":[null,1.5,null]}`)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if len(f.got) != 3 || !math.IsNaN(f.got[0]) || f.got[1] != 1.5 || !math.IsNaN(f.got[2]) {
+		t.Fatalf("scorer got %v, want [NaN 1.5 NaN]", f.got)
 	}
 }
 

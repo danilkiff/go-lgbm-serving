@@ -20,6 +20,9 @@
 #   10 is_new_browser    новый браузер (0/1)
 #   11 is_new_device     новое устройство (0/1)
 #
+# Missing-значение признака передаётся как null (JSON не умеет NaN); сервис
+# превращает его в NaN, и предсказание идёт по missing-веткам деревьев.
+#
 # decline при margin > threshold (0 по умолчанию), иначе approve. SHAP считается
 # асинхронно вне горячего пути: /explain доступен только для отклонений и спустя
 # мгновение после /score.
@@ -99,6 +102,21 @@ Accept: application/json
 > {%
     client.test("404 Not Found", function () {
         client.assert(response.status === 404, "status " + response.status);
+    });
+%}
+
+### POST /score - missing-признаки: null -> NaN -> missing-ветки деревьев
+# Непомеренный RTT (~96% строк датасета) передаётся как null, не как 0.
+POST {{host}}/score
+Content-Type: application/json
+
+{
+  "features": [null, 1, 14, 2, 200, 3600, 0, 0, 0, 0, 0, 0]
+}
+
+> {%
+    client.test("200 OK", function () {
+        client.assert(response.status === 200, "status " + response.status);
     });
 %}
 
