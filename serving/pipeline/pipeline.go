@@ -117,7 +117,6 @@ type Scorer struct {
 	threshold float64
 	modelVer  string
 	queue     Queue
-	newID     func() string
 	scored    atomic.Int64
 	declined  atomic.Int64
 }
@@ -131,7 +130,6 @@ func NewScorer(pool *lgbm.Pool, threshold float64, modelVer string, queue Queue)
 		threshold: threshold,
 		modelVer:  modelVer,
 		queue:     queue,
-		newID:     randID,
 	}
 }
 
@@ -143,7 +141,7 @@ func (s *Scorer) Score(row []float64) (ScoreResult, error) {
 		return ScoreResult{}, err
 	}
 	s.scored.Add(1)
-	res := ScoreResult{ID: s.newID(), Margin: margin, Decision: Approve}
+	res := ScoreResult{ID: randID(), Margin: margin, Decision: Approve}
 	if margin > s.threshold {
 		res.Decision = Decline
 		s.declined.Add(1)
