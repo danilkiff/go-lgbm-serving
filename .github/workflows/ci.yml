@@ -17,7 +17,7 @@ jobs:
           cache: false # нет внешних go-зависимостей (нет go.sum) - кэшировать нечего
 
       # uv приносит Python 3.12 и LightGBM 4.6.0, чей wheel содержит нативную
-      # lib_lightgbm.so, с которой линкуется cgo (см. README, "Архитектура").
+      # lib_lightgbm.so, с которой линкуется cgo (см. serving/README.md).
       # libgomp на раннере Ubuntu уже есть.
       - name: Install uv
         # Версия пиннована: непиннованный installer делает раннер невоспроизводимым.
