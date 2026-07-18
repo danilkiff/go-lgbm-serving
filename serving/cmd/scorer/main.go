@@ -64,12 +64,9 @@ func main() {
 		}
 	}
 
+	// Переполнение очереди видно вызывающему (explain_queued=false в ответе) и в
+	// /metrics (queue_dropped); логирования на горячем пути нет намеренно.
 	queue := pipeline.NewChannelQueue(*queueBuf)
-	// Переполнение очереди - конкретное отклонение навсегда без объяснения;
-	// агрегатного queue_dropped мало, потеря логируется по id.
-	queue.OnDrop = func(e pipeline.DeclineEvent) {
-		log.Printf("explain: queue full, explanation lost id=%s margin=%g", e.ID, e.Margin)
-	}
 	store := pipeline.NewMemStore()
 	scorer := pipeline.NewScorer(pool, *threshold, modelVer, queue)
 	worker := pipeline.NewWorker(pool, store, pipeline.WorkerConfig{

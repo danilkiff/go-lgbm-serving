@@ -165,12 +165,10 @@ func TestScorerFeatureCountError(t *testing.T) {
 }
 
 // TestChannelQueueDropsWhenFull проверяет, что горячий путь защищён: полная
-// очередь отбрасывает (не блокирует), учитывает потерю и отдаёт отброшенное
-// событие в OnDrop - потеря объяснения видна по id, а не только счётчиком.
+// очередь отбрасывает (не блокирует) и учитывает потерю; per-event отброс несёт
+// сам Publish=false (см. TestScorerDropIsVisible).
 func TestChannelQueueDropsWhenFull(t *testing.T) {
 	q := NewChannelQueue(1)
-	var droppedID string
-	q.OnDrop = func(e DeclineEvent) { droppedID = e.ID }
 	if !q.Publish(DeclineEvent{ID: "a"}) {
 		t.Fatal("first publish should succeed")
 	}
@@ -179,8 +177,5 @@ func TestChannelQueueDropsWhenFull(t *testing.T) {
 	}
 	if q.Dropped() != 1 {
 		t.Fatalf("dropped=%d, want 1", q.Dropped())
-	}
-	if droppedID != "b" {
-		t.Fatalf("OnDrop got id=%q, want b", droppedID)
 	}
 }

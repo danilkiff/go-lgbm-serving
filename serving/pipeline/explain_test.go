@@ -207,6 +207,9 @@ func medianContrib(t *testing.T, p *lgbm.Pool, row []float64, n int) time.Durati
 // SHAP в десятки раз дороже скоринга) не должна попадать на путь /score.
 // Меряет p99 /score вхолостую против полной нагрузки explain и проверяет, что он
 // остаётся сильно ниже стоимости одного SHAP - то есть SHAP не на горячем пути.
+// Тест утверждает только отсутствие синхронного SHAP; деградация от контентии по
+// CPU допустима и машинозависима, порог относительно baseline дал бы флаки на
+// малых CI-раннерах (см. комментарий к размеру пула в cmd/scorer).
 func TestHotPathIsolation(t *testing.T) {
 	if testing.Short() {
 		t.Skip("timing test")
