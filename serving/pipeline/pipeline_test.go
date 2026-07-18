@@ -26,11 +26,15 @@ func tdPoolN(t *testing.T, n int) *lgbm.Pool {
 
 // TestScorerDeclineEmits форсирует отклонение (порог ниже любого margin) и
 // проверяет, что горячий путь выкладывает DeclineEvent с id решения, margin,
-// версией модели и копией строки.
+// версией модели и копией строки: событие живёт дольше вызова Score, а
+// вызывающий переиспользует срез - алиас дал бы объяснение чужого входа.
 func TestScorerDeclineEmits(t *testing.T) {
 	pool := tdPool(t)
 	defer pool.Close()
 	row := make([]float64, pool.NumFeature())
+	for i := range row {
+		row[i] = float64(i)
+	}
 
 	q := NewChannelQueue(8)
 	s := NewScorer(pool, -1e18, "test-model", q)
@@ -41,6 +45,7 @@ func TestScorerDeclineEmits(t *testing.T) {
 	if res.Decision != Decline {
 		t.Fatalf("decision=%v, want decline", res.Decision)
 	}
+	row[0] = -42 // вызывающий переиспользовал срез после Score
 	select {
 	case e := <-q.Events():
 		if e.ID != res.ID {
@@ -53,7 +58,12 @@ func TestScorerDeclineEmits(t *testing.T) {
 			t.Errorf("event modelVer %q, want test-model", e.ModelVer)
 		}
 		if len(e.Row) != len(row) {
-			t.Errorf("event row len %d, want %d", len(e.Row), len(row))
+			t.Fatalf("event row len %d, want %d", len(e.Row), len(row))
+		}
+		for i := range e.Row {
+			if e.Row[i] != float64(i) {
+				t.Errorf("event row[%d]=%v, want %v (copy, not alias)", i, e.Row[i], float64(i))
+			}
 		}
 	default:
 		t.Fatal("decline did not emit an event")
