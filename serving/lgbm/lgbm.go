@@ -70,22 +70,12 @@ var cPredictParam = C.CString("num_threads=1")
 // Небезопасен для конкурентных вызовов Predict* на одном значении. Для
 // параллельного инференса используйте Pool.
 type Booster struct {
-	handle     C.BoosterHandle
-	nFeature   int
-	rawLen     int // длина вывода raw-предсказания (1 для бинарной задачи)
-	contribLen int // длина вывода SHAP (nFeature+1 на класс)
+	handle   C.BoosterHandle
+	nFeature int
 }
 
 func lastErr() error {
 	return fmt.Errorf("lightgbm: %s", C.GoString(C.LGBM_GetLastError()))
-}
-
-func calcNumPredict(h C.BoosterHandle, predictType int) (int, error) {
-	var n C.int64_t
-	if C.LGBM_BoosterCalcNumPredict(h, 1, C.int(predictType), 0, -1, &n) != 0 {
-		return 0, lastErr()
-	}
-	return int(n), nil
 }
 
 // LoadBooster загружает модель, ранее записанную Python-методом Booster.save_model.
@@ -114,23 +104,19 @@ func LoadBoosterFromBytes(data []byte) (*Booster, error) {
 		C.LGBM_BoosterFree(h)
 		return nil, lastErr()
 	}
-	b := &Booster{handle: h, nFeature: int(nf)}
-	var err error
-	if b.rawLen, err = calcNumPredict(h, cPredictRaw); err != nil {
-		C.LGBM_BoosterFree(h)
-		return nil, err
-	}
 	// PredictRaw отдаёт ровно один margin (out[0]): мультиклассовая модель молча
-	// теряла бы остальные классы - отказываем на загрузке, а не в проде.
-	if b.rawLen != 1 {
+	// теряла бы остальные классы - отказываем на загрузке, а не в проде. Гейт
+	// заодно фиксирует длины вывода: raw - 1, contrib - NumFeature()+1.
+	var nOut C.int64_t
+	if C.LGBM_BoosterCalcNumPredict(h, 1, C.int(cPredictRaw), 0, -1, &nOut) != 0 {
 		C.LGBM_BoosterFree(h)
-		return nil, fmt.Errorf("lgbm: model outputs %d values per row, expected 1 (binary or regression)", b.rawLen)
+		return nil, lastErr()
 	}
-	if b.contribLen, err = calcNumPredict(h, cPredictContrib); err != nil {
+	if nOut != 1 {
 		C.LGBM_BoosterFree(h)
-		return nil, err
+		return nil, fmt.Errorf("lgbm: model outputs %d values per row, expected 1 (binary or regression)", int(nOut))
 	}
-	return b, nil
+	return &Booster{handle: h, nFeature: int(nf)}, nil
 }
 
 // NumFeature возвращает число входных признаков модели.
@@ -145,8 +131,7 @@ func (b *Booster) Close() {
 }
 
 // predictInto прогоняет одну строку через PredictForMat для заданного типа
-// предсказания, используя заранее вычисленную длину вывода (горячий путь - один
-// вызов cgo).
+// предсказания; длину вывода знает вызывающий (горячий путь - один вызов cgo).
 func (b *Booster) predictInto(row []float64, predictType, outLen int) ([]float64, error) {
 	if len(row) != b.nFeature {
 		return nil, fmt.Errorf("lgbm: %w: expected %d features, got %d", ErrFeatureCount, b.nFeature, len(row))
@@ -178,7 +163,7 @@ func (b *Booster) predictInto(row []float64, predictType, outLen int) ([]float64
 // PredictRaw возвращает raw margin (до сигмоиды) для одной строки - прямой
 // аналог Python predict(raw_score=True).
 func (b *Booster) PredictRaw(row []float64) (float64, error) {
-	out, err := b.predictInto(row, cPredictRaw, b.rawLen)
+	out, err := b.predictInto(row, cPredictRaw, 1)
 	if err != nil {
 		return 0, err
 	}
@@ -186,8 +171,9 @@ func (b *Booster) PredictRaw(row []float64) (float64, error) {
 }
 
 // PredictContrib возвращает нативные SHAP contributions для одной строки, длина
-// NumFeature()+1. Последний элемент - base value; сумма всех элементов равна raw
-// margin (инвариант согласованности, который мы проверяем).
+// NumFeature()+1 (один выход на строку гарантирован при загрузке). Последний
+// элемент - base value; сумма всех элементов равна raw margin (инвариант
+// согласованности, который мы проверяем).
 func (b *Booster) PredictContrib(row []float64) ([]float64, error) {
-	return b.predictInto(row, cPredictContrib, b.contribLen)
+	return b.predictInto(row, cPredictContrib, b.nFeature+1)
 }
