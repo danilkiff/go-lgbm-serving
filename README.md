@@ -5,7 +5,7 @@
 Инференс обученной в Python модели LightGBM из Go через cgo, с нативными
 кодами причин SHAP и harness численного паритета.
 
-Домен для модели - сессионный фрод /risk-based authentication (RBA).
+Домен для модели - сессионный фрод / risk-based authentication (RBA).
 
 ## Проблема
 
