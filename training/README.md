@@ -29,12 +29,4 @@
 
 ## Команды
 
-`make help` печатает список:
-
-```sh
-make data      # эталоны паритета из фикстуры -> testdata/ (для CI)
-make data-rba  # скачать датасет RBA (~9 ГБ) и обучить (нужен kaggle CLI)
-make validate  # полный датасет (сперва data-rba) -> results/validation.json
-make notebook  # пересобрать и исполнить results/analysis.ipynb из analysis.py
-make clean     # удалить testdata/
-```
+`make help` печатает список целей. Датасет RBA для `make data-rba` - ~9 ГБ.
