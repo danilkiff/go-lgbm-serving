@@ -80,6 +80,11 @@ w = max(len(r[0]) for r in rows)
 for claim, measured, ok in rows:
     print(f"{'OK ' if ok else 'РАСХОЖДЕНИЕ'}  {claim:<{w}}  | {measured}")
 
+# Сверка - проверка, а не отчёт: расхождение обязано провалить исполнение
+# ноутбука (и make notebook), а не остаться строкой в выводе.
+failed = [claim for claim, _, ok in rows if not ok]
+assert not failed, f"утверждения разошлись с измеренным: {failed}"
+
 # %% [markdown]
 # ## 2. Выгруженная модель на holdout 50000
 #
