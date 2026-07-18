@@ -2,7 +2,8 @@
 name = "lgbm-poc-train"
 version = "0.1.0"
 description = "Обучение модели LightGBM (домен RBA / сессионный фрод) и выгрузка артефактов для PoC паритета и инференса на Go"
-requires-python = ">=3.12,<3.14"
+# ==3.12.*: путь к lib_lightgbm в #cgo LDFLAGS содержит python3.12 (serving/lgbm/lgbm.go).
+requires-python = "==3.12.*"
 dependencies = [
     "lightgbm>=4.0,<5",
     "numpy>=1.26",
