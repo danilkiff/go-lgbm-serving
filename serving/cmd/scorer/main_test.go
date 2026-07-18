@@ -97,6 +97,29 @@ func TestScoreHandlerBadJSON(t *testing.T) {
 	}
 }
 
+// TestScoreHandlerTrailingGarbage: запрос - ровно один JSON-объект; хвост после
+// него (мусор или второй объект) - 400 и до скоринга не доходит. Хвост из одних
+// пробелов - это конец корректного тела, а не мусор.
+func TestScoreHandlerTrailingGarbage(t *testing.T) {
+	f := &fakeScorer{}
+	h := scoreHandler(f)
+	rec := httptest.NewRecorder()
+	h(rec, httptest.NewRequest(http.MethodPost, "/score",
+		strings.NewReader(`{"features":[1]}{"features":[2]}`)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("trailing object: status=%d, want 400", rec.Code)
+	}
+	if f.got != nil {
+		t.Fatal("request with trailing data must not reach the scorer")
+	}
+
+	rec = httptest.NewRecorder()
+	h(rec, httptest.NewRequest(http.MethodPost, "/score", strings.NewReader(`{"features":[1]}`+"\n \t")))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("trailing whitespace: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 // TestScoreHandlerBodyTooLarge: тело сверх лимита - это 413 (не общий 400) и до
 // скоринга не доходит.
 func TestScoreHandlerBodyTooLarge(t *testing.T) {
