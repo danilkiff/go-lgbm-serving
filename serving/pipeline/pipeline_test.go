@@ -1,6 +1,7 @@
 package pipeline
 
 import (
+	"errors"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -79,6 +80,19 @@ func TestScorerApproveNoEmit(t *testing.T) {
 	case <-q.Events():
 		t.Fatal("approve must not emit an event")
 	default:
+	}
+}
+
+// TestScorerFeatureCountError: неверная ширина входа доходит до вызывающего как
+// lgbm.ErrFeatureCount сквозь реальную цепочку пул -> Scorer. На этом различении
+// HTTP-слой строит 422 против 500; фейк в cmd/scorer лишь повторяет обёртку -
+// настоящую проверяет этот тест.
+func TestScorerFeatureCountError(t *testing.T) {
+	pool := tdPoolN(t, 1)
+	defer pool.Close()
+	s := NewScorer(pool, 0, "m", nil)
+	if _, err := s.Score([]float64{1}); !errors.Is(err, lgbm.ErrFeatureCount) {
+		t.Fatalf("err=%v, want errors.Is(ErrFeatureCount)", err)
 	}
 }
 

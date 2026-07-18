@@ -2,6 +2,7 @@ package pipeline
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -126,6 +127,11 @@ func TestWorkerDeadLetters(t *testing.T) {
 	}
 	if got.ID != "bad" || gotErr == nil {
 		t.Fatalf("dead-letter event=%+v err=%v", got, gotErr)
+	}
+	// Причина сбоя сохраняет тип сквозь реальную цепочку - потребитель dead-letter
+	// может отличить ошибку входа от сбоя предиктора.
+	if !errors.Is(gotErr, lgbm.ErrFeatureCount) {
+		t.Fatalf("dead-letter err=%v, want errors.Is(ErrFeatureCount)", gotErr)
 	}
 	if w.Dropped() != 1 {
 		t.Fatalf("dropped=%d, want 1", w.Dropped())
