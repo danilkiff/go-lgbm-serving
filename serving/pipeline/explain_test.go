@@ -41,10 +41,9 @@ func TestExplainEndToEnd(t *testing.T) {
 	worker := NewWorker(pool, store, WorkerConfig{K: k})  // nil-каталог -> обобщённые коды
 
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() { worker.Run(ctx, queue.Events()); close(done) }()
+	wait := worker.Start(ctx, queue.Events(), 1)
 	// Остановить воркер до закрытия пула на всех путях выхода.
-	defer func() { cancel(); <-done; pool.Close() }()
+	defer func() { cancel(); wait(); pool.Close() }()
 
 	res, err := scorer.Score(row)
 	if err != nil {

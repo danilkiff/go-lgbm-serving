@@ -92,9 +92,8 @@ func NewWorker(pool *lgbm.Pool, store Store, cfg WorkerConfig) *Worker {
 	return &Worker{pool: pool, store: store, cfg: cfg}
 }
 
-// Run потребляет события, пока канал не закроется или ctx не отменят. Безопасен
-// для конкурентного запуска пулом горутин (см. Start).
-func (w *Worker) Run(ctx context.Context, events <-chan DeclineEvent) {
+// run потребляет события, пока events не закроется или ctx не отменят.
+func (w *Worker) run(ctx context.Context, events <-chan DeclineEvent) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -119,7 +118,7 @@ func (w *Worker) Start(ctx context.Context, events <-chan DeclineEvent, n int) f
 	for i := 0; i < n; i++ {
 		go func() {
 			defer wg.Done()
-			w.Run(ctx, events)
+			w.run(ctx, events)
 		}()
 	}
 	return wg.Wait
