@@ -72,9 +72,9 @@ def fixture_eval(model_path: str, X, y, holdout: int, seed: int, testdata: str |
     checks = {}
     if testdata:
         # Сверка с артефактами оригинального обучения: строки совпадают с
-        # holdout.csv (он писался %.10g из float32 - сравнение с rtol под этот
-        # роундтрип), а предсказания - с ref_raw.csv. Это и доказывает, что
-        # оценивается тот же сплит той же моделью.
+        # holdout.csv (пишется %.17g - точный round-trip float64; rtol лишь
+        # страхует сравнение от смены формата), а предсказания - с ref_raw.csv.
+        # Это и доказывает, что оценивается тот же сплит той же моделью.
         td = pathlib.Path(testdata)
         file_ho = np.loadtxt(td / "holdout.csv", delimiter=",", skiprows=1)
         if file_ho.shape != X_ho.shape:

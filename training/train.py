@@ -326,7 +326,9 @@ def main() -> None:
     out = pathlib.Path(args.outdir)
     out.mkdir(parents=True, exist_ok=True)
     booster.save_model(str(out / "model.txt"))
-    np.savetxt(out / "holdout.csv", X_ho, delimiter=",", header=",".join(names), comments="", fmt="%.10g")
+    # %.17g: полный round-trip float64 - Go читает в точности те же входы, что
+    # видел Python, и тождество входов не зависит от порогов сплитов деревьев.
+    np.savetxt(out / "holdout.csv", X_ho, delimiter=",", header=",".join(names), comments="", fmt="%.17g")
     np.savetxt(out / "ref_raw.csv", raw, delimiter=",", header="raw_margin", comments="", fmt="%.17g")
     np.savetxt(
         out / "ref_contrib.csv",
