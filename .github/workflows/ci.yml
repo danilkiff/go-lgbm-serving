@@ -31,6 +31,11 @@ jobs:
       - name: Lint (ruff)
         run: cd training && uv run --group dev ruff check .
 
+      # Инженерия признаков load_rba проверяется на синтетическом CSV: полный
+      # датасет (~9 ГБ) в CI недоступен.
+      - name: Test (python, load_rba)
+        run: cd training && uv run --group dev pytest -q
+
       - name: Generate reference artifacts
         run: make -C training data
 
