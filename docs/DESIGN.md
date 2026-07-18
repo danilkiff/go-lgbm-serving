@@ -4,8 +4,8 @@
 предиктора, что принял решение, а не post-hoc приближение. Оно форсирует разом два
 свойства:
 
-- **точная атрибуция** - SHAP contributions из того же предиктора, что скорит вход;
-- **численный паритет** Go-инференса с эталоном на Python - он и доказывает "тот же
+- точная атрибуция - SHAP contributions из того же предиктора, что скорит вход;
+- численный паритет Go-инференса с эталоном на Python - он и доказывает "тот же
   предиктор".
 
 Остальной дизайн выводится отсюда.
@@ -28,14 +28,14 @@
 
 ## Данные и признаки
 
-**Домен**: сессионный фрод / RBA. Источник - [датасет RBA](https://www.kaggle.com/datasets/dasgroup/rba-dataset) (Wiefling et al.): ~31.3M попыток входа, 3.3M пользователей, крупный SSO в Норвегии. Данные синтезированы (правдоподобны, но искусственны, не для боевых IDS), поэтому репозиторий доказывает только путь инференса и корректность кодов причин, но не
+Домен: сессионный фрод / RBA. Источник - [датасет RBA](https://www.kaggle.com/datasets/dasgroup/rba-dataset) (Wiefling et al.): ~31.3M попыток входа, 3.3M пользователей, крупный SSO в Норвегии. Данные синтезированы (правдоподобны, но искусственны, не для боевых IDS), поэтому репозиторий доказывает только путь инференса и корректность кодов причин, но не
 эффективность детекции.
 
-**Цель**: `Is Attack IP` (вход с атакующего IP), ~9.9% положительных - обучаемый сигнал
+Цель: `Is Attack IP` (вход с атакующего IP), ~9.9% положительных - обучаемый сигнал
 сессионного фрода. `Is Account Takeover` на порядки реже (флаг `--target ato`, но
 мерить качество почти не на чем).
 
-**Признаки**: числовые, поведенческие (RBA-новизна), считаются на пользователя в
+Признаки: числовые, поведенческие (RBA-новизна), считаются на пользователя в
 хронологическом порядке - используют только прошлое, без утечки метки: время с
 прошлого входа, число прошлых входов, час и день недели, успех входа, RTT, новизна
 страны / города / ASN / ОС / браузера / устройства.
@@ -60,12 +60,12 @@ README/DESIGN программно.
 
 > Требуется точная атрибуция на табличных несбалансированных данных.
 
-- Нейросеть + post-hoc атрибуция (KernelSHAP / интегрированные градиенты): атрибуция
+- нейросеть + post-hoc атрибуция (KernelSHAP / интегрированные градиенты): атрибуция
   приближённая и сэмплирующая, дороже в защите, и на табличных данных бустинг её
-  обыгрывает ([Grinsztajn et al., 2022](https://arxiv.org/abs/2207.08815)).
+  обыгрывает ([Grinsztajn et al., 2022](https://arxiv.org/abs/2207.08815));
 - GLM / скоркарта: коэффициенты и есть коды причин, но слабее на нелинейных
-  взаимодействиях.
-- Градиентный бустинг деревьев + TreeSHAP: TreeSHAP точен, не приближение
+  взаимодействиях;
+- градиентный бустинг деревьев + TreeSHAP: TreeSHAP точен, не приближение
   ([Lundberg et al.](https://arxiv.org/abs/1802.03888)), и быстр. Выбрано.
 
 ## Выбор: путь инференса в Go
@@ -81,9 +81,8 @@ README/DESIGN программно.
 | чистый Go [`leaves`](https://github.com/dmitryikh/leaves) | нет | только предсказание; реализует инференс заново | нет - вносит своё float-расхождение |
 
 LightGBM и XGBoost отдают contributions на инференсе; CatBoost-applier и ONNX - нет.
-Чистая реализация на Go проигрывает *дважды*: считает только предсказание, без
-contributions, и
-переписывает инференс заново, внося своё float-расхождение. 
+Чистая реализация на Go проигрывает дважды: считает только предсказание, без
+contributions, и переписывает инференс заново, внося своё float-расхождение.
 
 Выбран LightGBM поверх XGBoost: чистый `C_API_PREDICT_CONTRIB`, линковка одного бинарника даёт битово точный паритет бесплатно и на сильной табличной модели.
 
@@ -118,15 +117,15 @@ contributions, и
 
 - Wiefling et al. (2022) - Pump Up Password Security! (датасет RBA):
   <https://doi.org/10.1145/3546069>,
-  <https://www.kaggle.com/datasets/dasgroup/rba-dataset>
+  <https://www.kaggle.com/datasets/dasgroup/rba-dataset>;
 - Lundberg, Erion, Lee - Consistent Individualized Feature Attribution for Tree
-  Ensembles (TreeSHAP): <https://arxiv.org/abs/1802.03888>
+  Ensembles (TreeSHAP): <https://arxiv.org/abs/1802.03888>;
 - Grinsztajn, Oyallon, Varoquaux (2022) - Why do tree-based models still outperform
-  deep learning on tabular data?: <https://arxiv.org/abs/2207.08815>
+  deep learning on tabular data?: <https://arxiv.org/abs/2207.08815>;
 - LightGBM C API (`C_API_PREDICT_CONTRIB`):
-  <https://lightgbm.readthedocs.io/en/latest/C-API.html>
+  <https://lightgbm.readthedocs.io/en/latest/C-API.html>;
 - LightGBM [#3751](https://github.com/microsoft/LightGBM/issues/3751) /
   [#3771](https://github.com/microsoft/LightGBM/pull/3771) - потокобезопасность predict
-  в C API из Go через cgo.
+  в C API из Go через cgo;
 - ONNX Runtime [#1176](https://github.com/microsoft/onnxruntime/issues/1176) - нет
   SHAP-оператора.
