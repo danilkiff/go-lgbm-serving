@@ -103,8 +103,8 @@ func TestExplainEndToEnd(t *testing.T) {
 }
 
 // TestWorkerDeadLetters форсирует детерминированный сбой PredictContrib (строка
-// неверной ширины) и проверяет, что событие повторяется, уходит в dead-letter,
-// учитывается и никогда не сохраняется - код причины отклонения не теряется молча.
+// неверной ширины) и проверяет, что событие уходит в dead-letter, учитывается и
+// никогда не сохраняется - код причины отклонения не теряется молча.
 func TestWorkerDeadLetters(t *testing.T) {
 	pool := tdPool(t)
 	defer pool.Close()
@@ -115,7 +115,6 @@ func TestWorkerDeadLetters(t *testing.T) {
 	calls := 0
 	w := NewWorker(pool, store, WorkerConfig{
 		K:          3,
-		Retries:    2,
 		DeadLetter: func(e DeclineEvent, err error) { got, gotErr, calls = e, err, calls+1 },
 	})
 

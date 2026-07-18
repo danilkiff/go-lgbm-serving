@@ -70,12 +70,8 @@ type WorkerConfig struct {
 	K int
 	// Catalog размечает признаки кодами adverse-action (nil -> обобщённые коды).
 	Catalog *reasoncode.Catalog
-	// Retries - сколько дополнительных попыток PredictContrib делать при сбое
-	// (0 = одна попытка), защита от временных нативных ошибок.
-	Retries int
-	// DeadLetter получает событие, чьё объяснение так и не удалось после всех
-	// попыток, чтобы сбои были видны, а не молча терялись. nil -> событие лишь
-	// учитывается (см. Dropped).
+	// DeadLetter получает событие, чьё объяснение не удалось, чтобы сбои были
+	// видны, а не молча терялись. nil -> событие лишь учитывается (см. Dropped).
 	DeadLetter func(DeclineEvent, error)
 }
 
@@ -129,29 +125,26 @@ func (w *Worker) Start(ctx context.Context, events <-chan DeclineEvent, n int) f
 	return wg.Wait
 }
 
-// process считает и сохраняет одно объяснение, повторяя временные сбои и отправляя
-// в dead-letter событие, которое всё равно падает, - так код причины отклонения
-// никогда не теряется молча.
+// process считает и сохраняет одно объяснение; сбой уходит в dead-letter - так
+// код причины отклонения никогда не теряется молча. Повторов нет: вход и модель
+// в памяти те же, нативный сбой детерминирован, и повтор ничего не добавлял бы.
 func (w *Worker) process(e DeclineEvent) {
-	var err error
-	for attempt := 0; attempt <= w.cfg.Retries; attempt++ {
-		var exp Explanation
-		if exp, err = w.explain(e); err == nil {
-			w.store.Put(exp)
-			w.explained.Add(1)
-			return
+	exp, err := w.explain(e)
+	if err != nil {
+		w.dropped.Add(1)
+		if w.cfg.DeadLetter != nil {
+			w.cfg.DeadLetter(e, err)
 		}
+		return
 	}
-	w.dropped.Add(1)
-	if w.cfg.DeadLetter != nil {
-		w.cfg.DeadLetter(e, err)
-	}
+	w.store.Put(exp)
+	w.explained.Add(1)
 }
 
 // Explained сообщает, сколько объяснений посчитано и сохранено.
 func (w *Worker) Explained() int64 { return w.explained.Load() }
 
-// Dropped сообщает, сколько событий провалили все попытки (и ушли в dead-letter).
+// Dropped сообщает, сколько событий не удалось объяснить (ушли в dead-letter).
 func (w *Worker) Dropped() int64 { return w.dropped.Load() }
 
 // explain считает ранжированные коды причин для одного события отклонения.

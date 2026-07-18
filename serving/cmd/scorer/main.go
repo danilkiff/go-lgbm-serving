@@ -36,7 +36,6 @@ func main() {
 	topk := flag.Int("topk", 3, "reason codes per explanation")
 	codes := flag.String("codes", "", "optional JSON file mapping feature index to adverse-action {code,label}")
 	workers := flag.Int("workers", 2, "explain worker goroutines (share the Booster pool)")
-	retries := flag.Int("retries", 1, "extra PredictContrib attempts before dead-lettering")
 	flag.Parse()
 
 	if *model == "" {
@@ -76,9 +75,8 @@ func main() {
 	worker := pipeline.NewWorker(pool, store, pipeline.WorkerConfig{
 		K:       *topk,
 		Catalog: catalog,
-		Retries: *retries,
 		DeadLetter: func(e pipeline.DeclineEvent, err error) {
-			log.Printf("explain: dead-letter id=%s after %d attempts: %v", e.ID, *retries+1, err)
+			log.Printf("explain: dead-letter id=%s: %v", e.ID, err)
 		},
 	})
 
