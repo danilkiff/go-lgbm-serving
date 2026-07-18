@@ -40,3 +40,29 @@ func TopK(contrib []float64, k int) []int {
 	})
 	return idx[:k]
 }
+
+// TopKPositive возвращает индексы не более k наибольших положительных
+// contributions, наибольший первым; ничьи разрешаются меньшим индексом. Нулевые
+// и отрицательные не попадают в результат: они не толкали к отклонению и не
+// могут быть его причиной (adverse-action), поэтому результат бывает короче k.
+func TopKPositive(contrib []float64, k int) []int {
+	idx := make([]int, 0, len(contrib))
+	for i, v := range contrib {
+		if v > 0 {
+			idx = append(idx, i)
+		}
+	}
+	sort.Slice(idx, func(a, b int) bool {
+		if contrib[idx[a]] != contrib[idx[b]] {
+			return contrib[idx[a]] > contrib[idx[b]]
+		}
+		return idx[a] < idx[b]
+	})
+	if k < 0 {
+		k = 0
+	}
+	if k > len(idx) {
+		k = len(idx)
+	}
+	return idx[:k]
+}

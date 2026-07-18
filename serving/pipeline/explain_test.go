@@ -27,9 +27,9 @@ func TestMemStore(t *testing.T) {
 // TestExplainEndToEnd собирает весь путь decline->explain: отклонение на горячем
 // пути выкладывает событие, воркер считает нативный SHAP вне пути и сохраняет
 // объяснение, а мы проверяем сквозные инварианты - sum(contrib) примерно равно
-// margin решения, и сохранённые коды причин равны топ-K заново посчитанных
-// contributions. (TestParityContrib уже доказывает, что эти топ-K совпадают с эталоном
-// Python, так что сохранённые коды совпадают с ним транзитивно.)
+// margin решения, и сохранённые коды причин равны отбору по заново посчитанным
+// contributions. (TestParityContrib доказывает поэлементное равенство contributions
+// эталону Python, поэтому отбор по ним совпадает с эталонным транзитивно.)
 func TestExplainEndToEnd(t *testing.T) {
 	pool := tdPool(t)
 	row := make([]float64, pool.NumFeature())
@@ -82,7 +82,7 @@ func TestExplainEndToEnd(t *testing.T) {
 	if exp.Base != contrib[nf] {
 		t.Errorf("base=%v, want contrib[-1]=%v", exp.Base, contrib[nf])
 	}
-	want := reasoncode.TopK(contrib[:nf], k)
+	want := reasoncode.TopKPositive(contrib[:nf], k)
 	if len(exp.Reasons) != len(want) {
 		t.Fatalf("reasons len=%d, want %d", len(exp.Reasons), len(want))
 	}

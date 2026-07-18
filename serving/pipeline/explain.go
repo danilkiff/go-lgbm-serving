@@ -17,8 +17,10 @@ import (
 const marginTol = 1e-6
 
 // ReasonCode - один ранжированный contribution в решение: признак, его код/метка
-// adverse-action (через reasoncode.Catalog), толкнул ли он к отклонению или от
-// него, и знаковый SHAP contribution.
+// adverse-action (через reasoncode.Catalog) и знаковый SHAP contribution. В
+// Reasons отбираются только толкавшие к отклонению (Direction у них всегда
+// "increased risk"; поле оставлено, чтобы артефакт читался сам по себе, без
+// знания правила отбора).
 type ReasonCode struct {
 	Feature      int     `json:"feature"`
 	Code         string  `json:"code"`
@@ -173,7 +175,10 @@ func (w *Worker) explain(e DeclineEvent) (Explanation, error) {
 		return Explanation{}, fmt.Errorf("explain: sum(contrib)=%g != decision margin=%g (id=%s)", sum, e.Margin, e.ID)
 	}
 	nf := len(contrib) - 1 // последний элемент - base value
-	top := reasoncode.TopK(contrib[:nf], w.cfg.K)
+	// Причина отклонения - только contribution, толкавший к нему: отрицательные
+	// (аргументы за approve) и нулевые в Reasons не попадают, поэтому список
+	// бывает короче K.
+	top := reasoncode.TopKPositive(contrib[:nf], w.cfg.K)
 	reasons := make([]ReasonCode, len(top))
 	for i, idx := range top {
 		code := w.cfg.Catalog.Lookup(idx)
