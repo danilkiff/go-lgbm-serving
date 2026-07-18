@@ -96,8 +96,8 @@ func TestExplainEndToEnd(t *testing.T) {
 		if wantCode := fmt.Sprintf("R%d", want[i]); exp.Reasons[i].Code != wantCode {
 			t.Errorf("reason %d: code=%q, want %q (generic, nil catalog)", i, exp.Reasons[i].Code, wantCode)
 		}
-		if wantDir := reasoncode.Direction(contrib[want[i]]); exp.Reasons[i].Direction != wantDir {
-			t.Errorf("reason %d: direction=%q, want %q", i, exp.Reasons[i].Direction, wantDir)
+		if exp.Reasons[i].Contribution <= 0 {
+			t.Errorf("reason %d: contribution=%v, must be positive (pushed toward decline)", i, exp.Reasons[i].Contribution)
 		}
 	}
 }

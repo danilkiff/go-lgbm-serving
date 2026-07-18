@@ -65,7 +65,7 @@ Accept: application/json
         client.assert(response.body.reasons.length > 0, "no reasons");
     });
     client.log("top reason: " + response.body.reasons[0].code +
-               " (" + response.body.reasons[0].direction + ")" +
+               " contribution=" + response.body.reasons[0].contribution +
                " base=" + response.body.base + " margin=" + response.body.margin);
 %}
 

@@ -10,15 +10,13 @@ import (
 )
 
 // ReasonCode - один ранжированный contribution в решение: признак, его код/метка
-// adverse-action (через reasoncode.Catalog) и знаковый SHAP contribution. В
-// Reasons отбираются только толкавшие к отклонению (Direction у них всегда
-// "increased risk"; поле делает артефакт самоописуемым, без знания правила
-// отбора).
+// adverse-action (через reasoncode.Catalog) и SHAP contribution. В Reasons
+// отбираются только толкавшие к отклонению, поэтому Contribution всегда
+// положителен - каждая причина увеличивала риск.
 type ReasonCode struct {
 	Feature      int     `json:"feature"`
 	Code         string  `json:"code"`
 	Label        string  `json:"label"`
-	Direction    string  `json:"direction"`
 	Contribution float64 `json:"contribution"`
 }
 
@@ -172,7 +170,6 @@ func (w *Worker) explain(e DeclineEvent) (Explanation, error) {
 			Feature:      idx,
 			Code:         code.Code,
 			Label:        code.Label,
-			Direction:    reasoncode.Direction(contrib[idx]),
 			Contribution: contrib[idx],
 		}
 	}
