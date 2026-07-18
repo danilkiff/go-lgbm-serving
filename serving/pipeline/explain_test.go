@@ -140,34 +140,6 @@ func TestWorkerDeadLetters(t *testing.T) {
 	}
 }
 
-// TestWorkerRejectsForeignMargin: событие с margin, который не воспроизводится
-// суммой contributions (чужое решение или другая модель), уходит в dead-letter и
-// не сохраняется - хранилище не может содержать объяснение, расходящееся с
-// решением.
-func TestWorkerRejectsForeignMargin(t *testing.T) {
-	pool := tdPoolN(t, 1)
-	defer pool.Close()
-	store := NewMemStore()
-
-	var gotErr error
-	w := NewWorker(pool, store, WorkerConfig{
-		K:          3,
-		DeadLetter: func(_ DeclineEvent, err error) { gotErr = err },
-	})
-	row := make([]float64, pool.NumFeature())
-	w.process(DeclineEvent{ID: "foreign", Row: row, Margin: 12345, ModelVer: "m"})
-
-	if gotErr == nil {
-		t.Fatal("inconsistent margin must dead-letter")
-	}
-	if w.Dropped() != 1 {
-		t.Fatalf("dropped=%d, want 1", w.Dropped())
-	}
-	if _, ok := store.Get("foreign"); ok {
-		t.Fatal("inconsistent explanation must not be stored")
-	}
-}
-
 // TestWorkerPoolProcessesAll гоняет пул воркеров на пачке отклонений и проверяет,
 // что каждое объяснено.
 func TestWorkerPoolProcessesAll(t *testing.T) {

@@ -2,19 +2,12 @@ package pipeline
 
 import (
 	"context"
-	"fmt"
-	"math"
 	"sync"
 	"sync/atomic"
 
 	"github.com/danilkiff/go-lgbm-serving/lgbm"
 	"github.com/danilkiff/go-lgbm-serving/reasoncode"
 )
-
-// marginTol - допуск сверки sum(contrib) с margin решения. Наблюдаемый максимум
-// расхождения на одной сборке - 1.5e-14 (README, holdout 50000); порядки запаса
-// до любого реального рассогласования.
-const marginTol = 1e-6
 
 // ReasonCode - один ранжированный contribution в решение: признак, его код/метка
 // adverse-action (через reasoncode.Catalog) и знаковый SHAP contribution. В
@@ -157,22 +150,17 @@ func (w *Worker) Explained() int64 { return w.explained.Load() }
 func (w *Worker) Dropped() int64 { return w.dropped.Load() }
 
 // explain считает ранжированные коды причин для одного события отклонения.
-// Contributions берутся из того же нативного предиктора, что дал сам margin, поэтому
-// инвариант sum(contrib) == margin связывает объяснение с решением - и проверяется
-// здесь, а не живёт в комментарии: несогласованное событие (чужой margin, другая
-// модель - она не воспроизвела бы сумму) уходит в dead-letter, а не в хранилище.
+// Contributions берутся из того же нативного предиктора, что дал сам margin,
+// поэтому инвариант sum(contrib) == margin связывает объяснение с решением по
+// построению: один пул из одних байт, margin копируется в событие дословно.
+// Закреплён инвариант паритетным и e2e тестами; runtime-сверки нет намеренно -
+// в однопроцессной топологии она лишь добавляла бы новый путь потери
+// объяснения, не закрывая реального рассогласования. Понадобится она, когда
+// события начнёт приносить внешний Queue-адаптер из другого процесса.
 func (w *Worker) explain(e DeclineEvent) (Explanation, error) {
 	contrib, err := w.pool.PredictContrib(e.Row)
 	if err != nil {
 		return Explanation{}, err
-	}
-	var sum float64
-	for _, c := range contrib {
-		sum += c
-	}
-	// NaN несравним (Abs(NaN) > tol ложно), поэтому явная ветка.
-	if d := math.Abs(sum - e.Margin); math.IsNaN(d) || d > marginTol {
-		return Explanation{}, fmt.Errorf("explain: sum(contrib)=%g != decision margin=%g (id=%s)", sum, e.Margin, e.ID)
 	}
 	nf := len(contrib) - 1 // последний элемент - base value
 	// Причина отклонения - только contribution, толкавший к нему: отрицательные
