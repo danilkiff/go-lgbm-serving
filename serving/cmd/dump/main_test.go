@@ -55,7 +55,7 @@ func TestWriteDump(t *testing.T) {
 		t.Fatalf("holdout: %v", err)
 	}
 	if len(rows) > 100 {
-		rows = rows[:100] // тест должен быть быстрым; SHAP примерно в 58 раз дороже скоринга
+		rows = rows[:100] // тест должен быть быстрым; SHAP в десятки раз дороже скоринга
 	}
 
 	var buf bytes.Buffer

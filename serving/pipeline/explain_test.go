@@ -204,7 +204,7 @@ func medianContrib(t *testing.T, p *lgbm.Pool, row []float64, n int) time.Durati
 }
 
 // TestHotPathIsolation - ключевое свойство: насыщенная очередь explain (нативный
-// SHAP примерно в 58 раз дороже скоринга) не должна попадать на путь /score.
+// SHAP в десятки раз дороже скоринга) не должна попадать на путь /score.
 // Меряет p99 /score вхолостую против полной нагрузки explain и проверяет, что он
 // остаётся сильно ниже стоимости одного SHAP - то есть SHAP не на горячем пути.
 func TestHotPathIsolation(t *testing.T) {
