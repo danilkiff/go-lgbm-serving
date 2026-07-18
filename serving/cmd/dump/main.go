@@ -53,7 +53,6 @@ func main() {
 // тестируемо без запуска процесса.
 func writeDump(b *lgbm.Booster, rows [][]float64, out io.Writer) error {
 	w := csv.NewWriter(out)
-	defer w.Flush()
 
 	header := []string{"raw"}
 	for i := 0; i < b.NumFeature()+1; i++ {
@@ -80,6 +79,8 @@ func writeDump(b *lgbm.Booster, rows [][]float64, out io.Writer) error {
 			return err
 		}
 	}
+	// Flush до чтения Error: отложенный сброс терял бы ошибку последнего буфера.
+	w.Flush()
 	return w.Error()
 }
 
