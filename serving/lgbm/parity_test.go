@@ -24,12 +24,11 @@ const (
 )
 
 type meta struct {
-	LightGBMVersion  string   `json:"lightgbm_version"`
-	NFeatures        int      `json:"n_features"`
-	FeatureNames     []string `json:"feature_names"`
-	NHoldout         int      `json:"n_holdout"`
-	ContribShape     []int    `json:"contrib_shape"`
-	ScoreIsRawMargin bool     `json:"score_is_raw_margin"`
+	LightGBMVersion  string `json:"lightgbm_version"`
+	NFeatures        int    `json:"n_features"`
+	NHoldout         int    `json:"n_holdout"`
+	ContribShape     []int  `json:"contrib_shape"`
+	ScoreIsRawMargin bool   `json:"score_is_raw_margin"`
 }
 
 func tdPath(name string) string { return filepath.Join("..", "..", "training", "testdata", name) }
@@ -50,6 +49,10 @@ func loadMeta(t *testing.T) meta {
 	var m meta
 	if err := json.Unmarshal(b, &m); err != nil {
 		t.Fatalf("parse meta: %v", err)
+	}
+	// Гейт семантики эталонов: сравниваем raw margin, а не вероятности.
+	if !m.ScoreIsRawMargin {
+		t.Fatal("meta.score_is_raw_margin=false, reference dumps must hold raw margins")
 	}
 	return m
 }
