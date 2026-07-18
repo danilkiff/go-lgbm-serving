@@ -108,6 +108,12 @@ func TestParityRaw(t *testing.T) {
 	X := loadCSV(t, "holdout.csv")
 	ref := loadCSV(t, "ref_raw.csv") // n x 1
 
+	// Усечённый или пустой артефакт дал бы ноль сравнений и ложную зелень:
+	// формы сверяются с meta до единого цикла.
+	if len(X) == 0 || len(X) != m.NHoldout || len(ref) != len(X) {
+		t.Fatalf("shape: holdout=%d ref_raw=%d meta.n_holdout=%d", len(X), len(ref), m.NHoldout)
+	}
+
 	var maxDiff, sumDiff float64
 	flips := 0
 	for i, row := range X {
@@ -117,6 +123,11 @@ func TestParityRaw(t *testing.T) {
 		}
 		want := ref[i][0]
 		d := math.Abs(got - want)
+		// NaN несравним: d>maxDiff всегда ложно, и нечисловое расхождение
+		// проскочило бы молча.
+		if math.IsNaN(d) {
+			t.Fatalf("row %d: NaN in comparison (got=%v want=%v)", i, got, want)
+		}
 		sumDiff += d
 		if d > maxDiff {
 			maxDiff = d
@@ -151,6 +162,15 @@ func TestParityContrib(t *testing.T) {
 	raw := loadCSV(t, "ref_raw.csv")
 
 	width := m.NFeatures + 1
+	// Формы против meta до цикла: усечённый артефакт не даст ложную зелень.
+	if len(X) == 0 || len(X) != m.NHoldout || len(ref) != len(X) || len(raw) != len(X) {
+		t.Fatalf("shape: holdout=%d ref_contrib=%d ref_raw=%d meta.n_holdout=%d",
+			len(X), len(ref), len(raw), m.NHoldout)
+	}
+	if len(m.ContribShape) != 2 || m.ContribShape[0] != m.NHoldout || m.ContribShape[1] != width {
+		t.Fatalf("meta.contrib_shape=%v, want [%d %d]", m.ContribShape, m.NHoldout, width)
+	}
+
 	var maxDiff, maxSumDiff float64
 	topMismatch := 0
 	for i, row := range X {
@@ -158,19 +178,27 @@ func TestParityContrib(t *testing.T) {
 		if err != nil {
 			t.Fatalf("row %d: %v", i, err)
 		}
-		if len(got) != width {
-			t.Fatalf("row %d: contrib len %d, want %d", i, len(got), width)
+		if len(got) != width || len(ref[i]) != width {
+			t.Fatalf("row %d: contrib len %d, ref len %d, want %d", i, len(got), len(ref[i]), width)
 		}
 		// 1. поэлементный паритет с SHAP из Python
 		var sum float64
 		for j := range got {
-			if d := math.Abs(got[j] - ref[i][j]); d > maxDiff {
+			d := math.Abs(got[j] - ref[i][j])
+			if math.IsNaN(d) {
+				t.Fatalf("row %d col %d: NaN in comparison (got=%v want=%v)", i, j, got[j], ref[i][j])
+			}
+			if d > maxDiff {
 				maxDiff = d
 			}
 			sum += got[j]
 		}
 		// 2. внутренний инвариант: sum(contrib) == raw margin
-		if d := math.Abs(sum - raw[i][0]); d > maxSumDiff {
+		d := math.Abs(sum - raw[i][0])
+		if math.IsNaN(d) {
+			t.Fatalf("row %d: NaN in sum(contrib) vs raw margin", i)
+		}
+		if d > maxSumDiff {
 			maxSumDiff = d
 		}
 		// 3. устойчивость кодов причин: топ-K признаков по |contribution| (без base
