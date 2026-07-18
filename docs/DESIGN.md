@@ -80,10 +80,6 @@ README/DESIGN программно.
 | ONNX Runtime (cgo) | нет | нет SHAP-оператора ([onnxruntime#1176](https://github.com/microsoft/onnxruntime/issues/1176)); граф тензор-в/тензор-из | + конвертация = вторая поверхность расхождения |
 | чистый Go [`leaves`](https://github.com/dmitryikh/leaves) | нет | только предсказание; реализует инференс заново | нет - вносит своё float-расхождение |
 
-LightGBM и XGBoost отдают contributions на инференсе; CatBoost-applier и ONNX - нет.
-Чистая реализация на Go проигрывает дважды: считает только предсказание, без
-contributions, и переписывает инференс заново, внося своё float-расхождение.
-
 Выбран LightGBM поверх XGBoost: чистый `C_API_PREDICT_CONTRIB`, линковка одного бинарника даёт битово точный паритет бесплатно и на сильной табличной модели.
 
 ## Выбор: примитивы конкуренции
