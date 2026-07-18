@@ -51,6 +51,13 @@ func main() {
 	}
 	modelVer := modelVersion(*model, modelBytes)
 
+	var catalog *reasoncode.Catalog
+	if *codes != "" {
+		if catalog, err = reasoncode.LoadCatalog(*codes); err != nil {
+			log.Fatalf("scorer: load codes: %v", err)
+		}
+	}
+
 	// Хэндлов больше, чем воркеров explain: даже при всех воркерах, занятых SHAP,
 	// горячему пути остаётся GOMAXPROCS хэндлов. Резерв закрывает голод по
 	// хэндлам, но не контентию по CPU (см. TestHotPathIsolation).
@@ -58,13 +65,6 @@ func main() {
 	pool, err := lgbm.NewPoolFromBytes(modelBytes, n)
 	if err != nil {
 		log.Fatalf("scorer: load pool: %v", err)
-	}
-	var catalog *reasoncode.Catalog
-	if *codes != "" {
-		if catalog, err = reasoncode.LoadCatalog(*codes); err != nil {
-			pool.Close()
-			log.Fatalf("scorer: load codes: %v", err)
-		}
 	}
 
 	// Переполнение очереди видно вызывающему (explain_queued=false в ответе) и в
