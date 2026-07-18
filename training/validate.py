@@ -115,10 +115,13 @@ def fixture_eval(model_path: str, X, y, holdout: int, seed: int, testdata: str |
     return out
 
 
-def split_comparison(X, y, ts, seed: int, threads: int, n_train: int, n_test: int) -> dict:
+def split_comparison(X, y, ts, seed: int, threads: int, n_train: int, n_test: int) -> tuple[dict, dict]:
     """Случайный против временного сплита, одинаковое обучение - меняется только
     сплит. Временной: train на раннем периоде (до 85-го перцентиля времени),
-    test на позднем - режим "предсказываем будущее" с дрейфом доли атак."""
+    test на позднем - режим "предсказываем будущее" с дрейфом доли атак.
+
+    Возвращает (метрики, случайная пара train/test) - ту же пару переиспользует
+    leakage_contrast, чтобы контраст утечки шёл на одном сплите."""
     import lightgbm as lgb
 
     rng = np.random.default_rng(seed)
@@ -140,7 +143,7 @@ def split_comparison(X, y, ts, seed: int, threads: int, n_train: int, n_test: in
     tmp_train, tmp_test = sub(early, n_train), sub(late, n_test)
 
     m_rnd, m_tmp = fit(rnd_train), fit(tmp_train)
-    return {
+    metrics = {
         "n_train_subsample": n_train,
         "n_test_subsample": n_test,
         "temporal_cutoff": str(cutoff),
@@ -148,11 +151,8 @@ def split_comparison(X, y, ts, seed: int, threads: int, n_train: int, n_test: in
         "attack_rate_late": round(float(y[late].mean()), 6),
         "random": eval_scores(y[rnd_test], m_rnd.predict(X[rnd_test], raw_score=True)),
         "temporal": eval_scores(y[tmp_test], m_tmp.predict(X[tmp_test], raw_score=True)),
-        "leakage_inputs": {  # та же случайная пара train/test нужна контрасту утечки
-            "rnd_train": rnd_train,
-            "rnd_test": rnd_test,
-        },
     }
+    return metrics, {"rnd_train": rnd_train, "rnd_test": rnd_test}
 
 
 def leakage_contrast(X, y, names, aux: dict, idx_train, idx_test, seed: int, threads: int) -> dict:
@@ -210,8 +210,7 @@ def main() -> None:
     t_fixture = time.monotonic() - t0
 
     t0 = time.monotonic()
-    sc = split_comparison(X, y, ts, args.seed, args.threads, args.train_sub, args.test_sub)
-    leak_in = sc.pop("leakage_inputs")
+    sc, leak_in = split_comparison(X, y, ts, args.seed, args.threads, args.train_sub, args.test_sub)
     t_split = time.monotonic() - t0
 
     t0 = time.monotonic()
