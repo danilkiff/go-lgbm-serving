@@ -7,10 +7,9 @@ C_API_PREDICT_RAW_SCORE), до сигмоиды, один в один; SHAP cont
 вторая, внутренняя проверка для стороны Go.
 
 Режимы:
-  --dataset rba|csv  обучить и выгрузить эталоны. rba: датасет RBA (Wiefling et al.),
+  --input PATH       обучить на датасете RBA (Wiefling et al.) и выгрузить эталоны:
                      цель Is Attack IP, признаки из сырых колонок (RTT, время суток,
-                     новизна страны/города/ASN/ОС/браузера/устройства). csv: числовой
-                     CSV с колонкой-целью.
+                     новизна страны/города/ASN/ОС/браузера/устройства).
   --from-model PATH  без обучения: выгрузить эталоны из готового model.txt на
                      случайном холдауте - так CI проверяет паритет на закоммиченной
                      фикстуре, не качая 9 ГБ датасета.
@@ -32,24 +31,6 @@ import json
 import pathlib
 
 import numpy as np
-
-
-def load_csv(path: str, target: str):
-    """Адаптер реального открытого датасета. Только числовые столбцы."""
-    import csv
-
-    with open(path, newline="") as fh:
-        reader = csv.reader(fh)
-        header = next(reader)
-        rows = [r for r in reader]
-    if target not in header:
-        raise SystemExit(f"target column {target!r} not in {header[:8]}...")
-    tcol = header.index(target)
-    names = [c for i, c in enumerate(header) if i != tcol]
-    data = np.array(rows, dtype=np.float64)
-    y = data[:, tcol].astype(np.int32)
-    X = np.delete(data, tcol, axis=1)
-    return X, y, names
 
 
 # validate.py переобучает модели сравнения сплитов и контраста утечки строго с
@@ -287,10 +268,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--from-model",
                     help="выгрузить эталоны паритета из готового model.txt, без обучения")
-    ap.add_argument("--dataset", choices=["rba", "csv"], default="rba")
-    ap.add_argument("--input", help="CSV path for --dataset rba|csv")
+    ap.add_argument("--input", help="path to rba-dataset.csv")
     ap.add_argument("--target", default="attack",
-                    help="rba: 'attack' (Is Attack IP) or 'ato'; csv: target column name")
+                    help="'attack' (Is Attack IP) or 'ato'")
     ap.add_argument("--holdout", type=int, default=4000,
                     help="rows held out for the parity check (или сгенерированных при --from-model)")
     ap.add_argument("--seed", type=int, default=708)
@@ -305,17 +285,9 @@ def main() -> None:
 
     import lightgbm as lgb
 
-    reason_codes = None
-    if args.dataset == "rba":
-        if not args.input:
-            raise SystemExit("--dataset rba requires --input <path to rba-dataset.csv>")
-        X, y, _ts, names, reason_codes = load_rba(args.input, args.target)
-    else:  # csv
-        if not args.input:
-            raise SystemExit("--dataset csv requires --input <path>")
-        X, y, names = load_csv(args.input, args.target)
-    if reason_codes is None:
-        reason_codes = {n: {"code": f"R{i}", "label": n} for i, n in enumerate(names)}
+    if not args.input:
+        raise SystemExit("--input <path to rba-dataset.csv> is required")
+    X, y, _ts, names, reason_codes = load_rba(args.input, args.target)
 
     # Детерминированное разбиение holdout.
     rng = np.random.default_rng(args.seed)
@@ -368,7 +340,7 @@ def main() -> None:
     (out / "codes.json").write_text(json.dumps(codes, ensure_ascii=False, indent=2))
     meta = {
         "lightgbm_version": lgb.__version__,
-        "dataset": args.dataset,
+        "dataset": "rba",
         "target": args.target,
         "seed": args.seed,
         "n_features": len(names),
@@ -384,7 +356,7 @@ def main() -> None:
     }
     (out / "meta.json").write_text(json.dumps(meta, indent=2))
 
-    print(f"lightgbm {lgb.__version__} | dataset={args.dataset} target={meta['target']}")
+    print(f"lightgbm {lgb.__version__} | dataset=rba target={meta['target']}")
     print(f"wrote {out}/ : model.txt, holdout.csv ({X_ho.shape}), ref_raw.csv, ref_contrib.csv {contrib.shape}, meta.json, codes.json")
     print(f"train rows={len(train_idx)} pos_rate={y_tr.mean():.5f} | raw margin range [{raw.min():.4f}, {raw.max():.4f}]")
     print(f"holdout metrics: {metrics}")
