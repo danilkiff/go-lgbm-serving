@@ -173,6 +173,9 @@ type scoreResponse struct {
 	ID       string  `json:"id"`
 	Margin   float64 `json:"margin"`
 	Decision string  `json:"decision"`
+	// ExplainQueued=true только у отклонения, чьё событие принято очередью
+	// explain: /explain/{id} со временем ответит. false - объяснения не будет.
+	ExplainQueued bool `json:"explain_queued"`
 }
 
 func scoreHandler(s scorer) http.HandlerFunc {
@@ -211,9 +214,10 @@ func scoreHandler(s scorer) http.HandlerFunc {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(scoreResponse{
-			ID:       res.ID,
-			Margin:   res.Margin,
-			Decision: res.Decision.String(),
+			ID:            res.ID,
+			Margin:        res.Margin,
+			Decision:      res.Decision.String(),
+			ExplainQueued: res.ExplainQueued,
 		})
 	}
 }

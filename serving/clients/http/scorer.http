@@ -25,7 +25,8 @@
 #
 # decline при margin > threshold (0 по умолчанию), иначе approve. SHAP считается
 # асинхронно вне горячего пути: /explain доступен только для отклонений и спустя
-# мгновение после /score.
+# мгновение после /score. Объяснение best-effort: explain_queued=false в ответе
+# означает, что объяснения не будет (очередь полна или решение - approve).
 
 ### POST /score - отклонение (margin > 0)
 # Успех, ничего нового, но 1188 входов в 3 ночи -> margin 2.70, decline.
@@ -43,6 +44,9 @@ Content-Type: application/json
     });
     client.test("decision is decline", function () {
         client.assert(response.body.decision === "decline", "got " + response.body.decision);
+    });
+    client.test("explanation queued", function () {
+        client.assert(response.body.explain_queued === true, "explanation was dropped");
     });
     client.global.set("declineId", response.body.id);
     client.log("decline id=" + response.body.id + " margin=" + response.body.margin);

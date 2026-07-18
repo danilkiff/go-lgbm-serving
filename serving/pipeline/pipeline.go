@@ -104,11 +104,15 @@ func (q *ChannelQueue) Cap() int { return cap(q.ch) }
 // паникует.
 func (q *ChannelQueue) Close() { close(q.ch) }
 
-// ScoreResult - ответ горячего пути по одной попытке входа.
+// ScoreResult - ответ горячего пути по одной попытке входа. Объяснение
+// best-effort: ExplainQueued=false у одобрений и у отклонений, чьё событие
+// отброшено полной очередью, - вызывающий узнаёт о потере сразу, а не вечным
+// 404 на /explain.
 type ScoreResult struct {
-	ID       string
-	Margin   float64
-	Decision Decision
+	ID            string
+	Margin        float64
+	Decision      Decision
+	ExplainQueued bool
 }
 
 // Scorer - горячий путь: скоринг попытки входа -> решение -> (для отклонений)
@@ -157,7 +161,7 @@ func (s *Scorer) Score(row []float64) (ScoreResult, error) {
 				Margin:   margin,
 				ModelVer: s.modelVer,
 			}
-			s.queue.Publish(event)
+			res.ExplainQueued = s.queue.Publish(event)
 		}
 	}
 	return res, nil

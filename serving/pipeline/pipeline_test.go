@@ -46,6 +46,9 @@ func TestScorerDeclineEmits(t *testing.T) {
 	if res.Decision != Decline {
 		t.Fatalf("decision=%v, want decline", res.Decision)
 	}
+	if !res.ExplainQueued {
+		t.Fatal("event accepted by the queue, ExplainQueued must be true")
+	}
 	row[0] = -42 // вызывающий переиспользовал срез после Score
 	select {
 	case e := <-q.Events():
@@ -91,6 +94,30 @@ func TestScorerApproveNoEmit(t *testing.T) {
 	case <-q.Events():
 		t.Fatal("approve must not emit an event")
 	default:
+	}
+}
+
+// TestScorerDropIsVisible: контракт best-effort - отклонение при полной очереди
+// остаётся успешным решением, но потеря объяснения видна вызывающему сразу
+// (ExplainQueued=false) и учтена счётчиком, а не обнаруживается вечным 404.
+func TestScorerDropIsVisible(t *testing.T) {
+	pool := tdPoolN(t, 1)
+	defer pool.Close()
+	row := make([]float64, pool.NumFeature())
+
+	q := NewChannelQueue(0) // нулевой буфер: любое событие отбрасывается
+	res, err := NewScorer(pool, -1e18, "m", q).Score(row)
+	if err != nil {
+		t.Fatalf("score: %v", err)
+	}
+	if res.Decision != Decline {
+		t.Fatalf("decision=%v, want decline", res.Decision)
+	}
+	if res.ExplainQueued {
+		t.Fatal("event dropped, ExplainQueued must be false")
+	}
+	if q.Dropped() != 1 {
+		t.Fatalf("dropped=%d, want 1", q.Dropped())
 	}
 }
 

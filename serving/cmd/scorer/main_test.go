@@ -30,7 +30,7 @@ func (f *fakeScorer) Score(row []float64) (pipeline.ScoreResult, error) {
 }
 
 func TestScoreHandler(t *testing.T) {
-	f := &fakeScorer{res: pipeline.ScoreResult{ID: "abc", Margin: 1.5, Decision: pipeline.Decline}}
+	f := &fakeScorer{res: pipeline.ScoreResult{ID: "abc", Margin: 1.5, Decision: pipeline.Decline, ExplainQueued: true}}
 	h := scoreHandler(f)
 
 	rec := httptest.NewRecorder()
@@ -45,6 +45,9 @@ func TestScoreHandler(t *testing.T) {
 	}
 	if resp.ID != "abc" || resp.Decision != "decline" || resp.Margin != 1.5 {
 		t.Fatalf("response=%+v", resp)
+	}
+	if !resp.ExplainQueued {
+		t.Fatal("explain_queued must pass through to the response")
 	}
 	if len(f.got) != 3 {
 		t.Fatalf("scorer received %d features, want 3", len(f.got))
