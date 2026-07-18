@@ -20,7 +20,7 @@ package lgbm
 typedef void* BoosterHandle;
 
 extern const char* LGBM_GetLastError(void);
-extern int LGBM_BoosterCreateFromModelfile(const char* filename, int* out_num_iterations, BoosterHandle* out);
+extern int LGBM_BoosterLoadModelFromString(const char* model_str, int* out_num_iterations, BoosterHandle* out);
 extern int LGBM_BoosterFree(BoosterHandle handle);
 extern int LGBM_BoosterGetNumFeature(BoosterHandle handle, int* out_len);
 extern int LGBM_BoosterCalcNumPredict(BoosterHandle handle, int num_row, int predict_type, int start_iteration, int num_iteration, int64_t* out_len);
@@ -42,6 +42,7 @@ import "C"
 import (
 	"errors"
 	"fmt"
+	"os"
 	"runtime"
 	"unsafe"
 )
@@ -89,12 +90,23 @@ func calcNumPredict(h C.BoosterHandle, predictType int) (int, error) {
 
 // LoadBooster загружает модель, ранее записанную Python-методом Booster.save_model.
 func LoadBooster(path string) (*Booster, error) {
-	cpath := C.CString(path)
-	defer C.free(unsafe.Pointer(cpath))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return LoadBoosterFromBytes(data)
+}
+
+// LoadBoosterFromBytes загружает модель из содержимого файла модели. Байты -
+// единица идентичности: вызывающий хеширует ровно то, что загружено, без гонки
+// с файлом на диске между хешированием и загрузкой.
+func LoadBoosterFromBytes(data []byte) (*Booster, error) {
+	cstr := C.CString(string(data))
+	defer C.free(unsafe.Pointer(cstr))
 
 	var nIter C.int
 	var h C.BoosterHandle
-	if C.LGBM_BoosterCreateFromModelfile(cpath, &nIter, &h) != 0 {
+	if C.LGBM_BoosterLoadModelFromString(cstr, &nIter, &h) != 0 {
 		return nil, lastErr()
 	}
 	var nf C.int

@@ -8,8 +8,6 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -116,29 +114,17 @@ func TestScoreHandlerBodyTooLarge(t *testing.T) {
 	}
 }
 
-// TestModelVersion: версия начинается с пути и меняется вместе с байтами файла -
+// TestModelVersion: версия начинается с пути и меняется вместе с байтами модели -
 // это и есть привязка объяснения к конкретной модели.
 func TestModelVersion(t *testing.T) {
-	p := filepath.Join(t.TempDir(), "m.txt")
-	if err := os.WriteFile(p, []byte("tree v1"), 0o644); err != nil {
-		t.Fatal(err)
+	v1 := modelVersion("m.txt", []byte("tree v1"))
+	if !strings.HasPrefix(v1, "m.txt@") || len(v1) != len("m.txt")+1+16 {
+		t.Fatalf("version=%q, want path + '@' + 16 hex chars", v1)
 	}
-	v1, err := modelVersion(p)
-	if err != nil {
-		t.Fatalf("modelVersion: %v", err)
+	if modelVersion("m.txt", []byte("tree v1")) != v1 {
+		t.Fatal("same bytes must give the same version")
 	}
-	if !strings.HasPrefix(v1, p+"@") || len(v1) != len(p)+1+16 {
-		t.Fatalf("version=%q, want %q + '@' + 16 hex chars", v1, p)
-	}
-	again, _ := modelVersion(p)
-	if again != v1 {
-		t.Fatalf("same bytes gave %q and %q", v1, again)
-	}
-	if err := os.WriteFile(p, []byte("tree v2"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	v2, _ := modelVersion(p)
-	if v2 == v1 {
+	if modelVersion("m.txt", []byte("tree v2")) == v1 {
 		t.Fatal("different bytes must give a different version")
 	}
 }

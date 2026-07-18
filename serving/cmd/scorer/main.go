@@ -41,18 +41,20 @@ func main() {
 	if *model == "" {
 		log.Fatal("scorer: -model is required (e.g. -model fixtures/model.txt)")
 	}
-	// Версия модели - путь плюс sha256-префикс файла: объяснение в Explanation
-	// привязано к байтам модели, принявшей решение, а не к имени файла.
-	modelVer, err := modelVersion(*model)
+	// Файл читается один раз: версия (путь@sha256) и пул считаются от одних байт,
+	// иначе замена файла между хешированием и загрузкой дала бы fingerprint одной
+	// модели при пуле другой.
+	modelBytes, err := os.ReadFile(*model)
 	if err != nil {
-		log.Fatalf("scorer: model version: %v", err)
+		log.Fatalf("scorer: read model: %v", err)
 	}
+	modelVer := modelVersion(*model, modelBytes)
 
 	// Хэндлов больше, чем воркеров explain: даже при всех воркерах, занятых SHAP,
 	// горячему пути остаётся GOMAXPROCS хэндлов. Резерв закрывает голод по
 	// хэндлам, но не контентию по CPU (см. TestHotPathIsolation).
 	n := runtime.GOMAXPROCS(0) + *workers
-	pool, err := lgbm.NewPool(*model, n)
+	pool, err := lgbm.NewPoolFromBytes(modelBytes, n)
 	if err != nil {
 		log.Fatalf("scorer: load pool: %v", err)
 	}
@@ -142,15 +144,12 @@ func main() {
 	log.Printf("scorer: stopped")
 }
 
-// modelVersion возвращает "путь@sha256-префикс" файла модели - идентификатор,
-// по которому объяснение сверяется с байтами модели, а не с именем файла.
-func modelVersion(path string) (string, error) {
-	b, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	sum := sha256.Sum256(b)
-	return fmt.Sprintf("%s@%x", path, sum[:8]), nil
+// modelVersion возвращает "путь@sha256-префикс" содержимого модели -
+// идентификатор, по которому объяснение сверяется с байтами модели, а не с
+// именем файла. Байты передаёт вызывающий: те же, из которых загружен пул.
+func modelVersion(path string, data []byte) string {
+	sum := sha256.Sum256(data)
+	return fmt.Sprintf("%s@%x", path, sum[:8])
 }
 
 // scorer - поведение горячего пути, нужное HTTP-обработчику; *pipeline.Scorer

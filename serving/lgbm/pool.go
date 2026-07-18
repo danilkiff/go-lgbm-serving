@@ -1,6 +1,9 @@
 package lgbm
 
-import "fmt"
+import (
+	"fmt"
+	"os"
+)
 
 // Pool - фиксированный набор независимых хэндлов Booster одной модели, по одному
 // на вызов: каждая горутина берёт свой хэндл, отсюда настоящий параллелизм без
@@ -13,14 +16,25 @@ type Pool struct {
 	all     []*Booster
 }
 
-// NewPool загружает size независимых хэндлов из одного файла модели.
+// NewPool загружает size независимых хэндлов из одного файла модели. Файл
+// читается один раз: все хэндлы гарантированно из одних байт.
 func NewPool(path string, size int) (*Pool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return NewPoolFromBytes(data, size)
+}
+
+// NewPoolFromBytes загружает size независимых хэндлов из содержимого файла
+// модели (см. LoadBoosterFromBytes).
+func NewPoolFromBytes(data []byte, size int) (*Pool, error) {
 	if size < 1 {
 		return nil, fmt.Errorf("lgbm: pool size must be >= 1, got %d", size)
 	}
 	p := &Pool{handles: make(chan *Booster, size), all: make([]*Booster, 0, size)}
 	for i := range size {
-		b, err := LoadBooster(path)
+		b, err := LoadBoosterFromBytes(data)
 		if err != nil {
 			p.Close()
 			return nil, fmt.Errorf("lgbm: pool handle %d: %w", i, err)
