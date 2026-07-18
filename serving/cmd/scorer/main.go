@@ -68,7 +68,7 @@ func main() {
 	}
 
 	// Переполнение очереди видно вызывающему (explain_queued=false в ответе) и в
-	// /metrics (queue_dropped); логирования на горячем пути нет намеренно.
+	// /metrics (queue_dropped).
 	queue := pipeline.NewChannelQueue(*queueBuf)
 	store := pipeline.NewMemStore()
 	scorer := pipeline.NewScorer(pool, *threshold, modelVer, queue)

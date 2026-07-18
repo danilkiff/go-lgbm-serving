@@ -12,8 +12,8 @@ import (
 // ReasonCode - один ранжированный contribution в решение: признак, его код/метка
 // adverse-action (через reasoncode.Catalog) и знаковый SHAP contribution. В
 // Reasons отбираются только толкавшие к отклонению (Direction у них всегда
-// "increased risk"; поле оставлено, чтобы артефакт читался сам по себе, без
-// знания правила отбора).
+// "increased risk"; поле делает артефакт самоописуемым, без знания правила
+// отбора).
 type ReasonCode struct {
 	Feature      int     `json:"feature"`
 	Code         string  `json:"code"`
@@ -129,7 +129,7 @@ func (w *Worker) Start(ctx context.Context, events <-chan DeclineEvent, n int) f
 
 // process считает и сохраняет одно объяснение; сбой уходит в dead-letter - так
 // код причины отклонения никогда не теряется молча. Повторов нет: вход и модель
-// в памяти те же, нативный сбой детерминирован, и повтор ничего не добавлял бы.
+// в памяти те же, нативный сбой детерминирован.
 func (w *Worker) process(e DeclineEvent) {
 	exp, err := w.explain(e)
 	if err != nil {
@@ -150,13 +150,11 @@ func (w *Worker) Explained() int64 { return w.explained.Load() }
 func (w *Worker) Dropped() int64 { return w.dropped.Load() }
 
 // explain считает ранжированные коды причин для одного события отклонения.
-// Contributions берутся из того же нативного предиктора, что дал сам margin,
-// поэтому инвариант sum(contrib) == margin связывает объяснение с решением по
-// построению: один пул из одних байт, margin копируется в событие дословно.
-// Закреплён инвариант паритетным и e2e тестами; runtime-сверки нет намеренно -
-// в однопроцессной топологии она лишь добавляла бы новый путь потери
-// объяснения, не закрывая реального рассогласования. Понадобится она, когда
-// события начнёт приносить внешний Queue-адаптер из другого процесса.
+// Contributions берутся из того же нативного предиктора, что дал сам margin:
+// один пул из одних байт связывает объяснение с решением (инвариант
+// sum(contrib) == margin, проверяется паритетным и e2e тестами). Внешний
+// Queue-адаптер, приносящий события из другого процесса, обязан сверять margin
+// сам.
 func (w *Worker) explain(e DeclineEvent) (Explanation, error) {
 	contrib, err := w.pool.PredictContrib(e.Row)
 	if err != nil {
